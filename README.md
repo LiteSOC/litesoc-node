@@ -8,11 +8,13 @@ Official Node.js/TypeScript SDK for [LiteSOC](https://www.litesoc.io) - Security
 
 ## Features
 
-- 🔒 **Type-safe** - Full TypeScript support with predefined event types
+- 🔒 **Type-safe** - Full TypeScript support with 26 predefined standard events
 - ⚡ **Batching** - Automatic event batching to reduce network calls
 - 🌐 **Universal** - Works in Node.js, Next.js (Server Side), and Edge runtimes
 - 🔄 **Auto-retry** - Automatic retry on network failures
-- 🤫 **Silent mode** - Fail silently without crashing your application
+- 🗺️ **Geo-IP Enrichment** - Automatic location data from IP addresses
+- 🛡️ **Network Intelligence** - VPN, Tor, Proxy & Datacenter detection
+- 📊 **Threat Scoring** - Auto-assigned severity (Low → Critical)
 - 📦 **Zero dependencies** - Pure TypeScript, no external dependencies
 
 ## Installation
@@ -35,16 +37,40 @@ const litesoc = new LiteSOC({
   apiKey: 'your-api-key',
 });
 
-// Track a login failure
+// Track a login failure - LiteSOC auto-enriches with GeoIP & Network Intelligence
 await litesoc.track('auth.login_failed', {
   actor: { id: 'user_123', email: 'user@example.com' },
-  userIp: '192.168.1.1',
+  userIp: '192.168.1.1',  // Required for GeoIP & Network Intelligence
   metadata: { reason: 'invalid_password' },
 });
 
 // Flush remaining events before shutdown
 await litesoc.flush();
 ```
+
+## Security Intelligence (Automatic Enrichment)
+
+When you provide `userIp`, LiteSOC automatically enriches your events with:
+
+### 🗺️ Geolocation
+- Country & City resolution
+- Latitude/Longitude coordinates
+- Interactive map visualization in dashboard
+
+### 🛡️ Network Intelligence
+- **VPN Detection** - NordVPN, ExpressVPN, Surfshark, etc.
+- **Tor Exit Nodes** - Anonymizing network detection
+- **Proxy Detection** - HTTP/SOCKS proxy identification
+- **Datacenter IPs** - AWS, GCP, Azure, DigitalOcean, etc.
+
+### 📊 Threat Scoring
+Events are auto-classified by severity:
+- **Low** - Normal activity
+- **Medium** - Unusual patterns
+- **High** - Suspicious behavior
+- **Critical** - Active threats (triggers instant alerts)
+
+> **Important**: Always include `userIp` for full security intelligence features.
 
 ## Configuration
 
@@ -173,63 +199,58 @@ export async function POST(request: Request) {
 
 ## Event Types
 
-### Authentication Events
+LiteSOC supports **26 standard events** across 5 categories. All events are automatically normalized and enriched.
 
-| Event | Description |
-|-------|-------------|
-| `auth.login_success` | Successful login |
-| `auth.login_failed` | Failed login attempt |
-| `auth.logout` | User logged out |
-| `auth.password_changed` | Password was changed |
-| `auth.password_reset_requested` | Password reset requested |
-| `auth.password_reset_completed` | Password reset completed |
-| `auth.mfa_enabled` | MFA was enabled |
-| `auth.mfa_disabled` | MFA was disabled |
-| `auth.mfa_challenge_success` | MFA challenge passed |
-| `auth.mfa_challenge_failed` | MFA challenge failed |
-| `auth.session_created` | New session created |
-| `auth.session_revoked` | Session was revoked |
+### Authentication Events (8)
 
-### Authorization Events
+| Event | Description | Severity |
+|-------|-------------|----------|
+| `auth.login_success` | Successful login | Info |
+| `auth.login_failed` | Failed login attempt | Info |
+| `auth.logout` | User logged out | Info |
+| `auth.password_reset` | Password reset requested/completed | Info |
+| `auth.mfa_enabled` | MFA was enabled | Info |
+| `auth.mfa_disabled` | MFA was disabled | Medium |
+| `auth.session_expired` | Session timed out | Info |
+| `auth.token_refreshed` | Auth token renewed | Info |
 
-| Event | Description |
-|-------|-------------|
-| `authz.role_assigned` | Role was assigned |
-| `authz.role_removed` | Role was removed |
-| `authz.role_changed` | Role was changed |
-| `authz.permission_granted` | Permission was granted |
-| `authz.permission_revoked` | Permission was revoked |
-| `authz.access_denied` | Access was denied |
-| `authz.access_granted` | Access was granted |
+### Authorization Events (4)
 
-### Admin Events (Critical)
+| Event | Description | Severity |
+|-------|-------------|----------|
+| `authz.access_denied` | User denied access to resource | **Critical** |
+| `authz.role_changed` | User role/permissions modified | **Critical** |
+| `authz.permission_granted` | New permission assigned | Info |
+| `authz.permission_revoked` | Permission removed | Medium |
 
-| Event | Description |
-|-------|-------------|
-| `admin.privilege_escalation` | Privilege escalation detected |
-| `admin.user_impersonation` | Admin impersonated a user |
-| `admin.settings_changed` | System settings changed |
-| `admin.api_key_created` | API key was created |
-| `admin.api_key_revoked` | API key was revoked |
+### Admin Events (7)
 
-### Data Events
+| Event | Description | Severity |
+|-------|-------------|----------|
+| `admin.user_created` | New user account created | Info |
+| `admin.user_deleted` | User account removed | Medium |
+| `admin.user_suspended` | User account disabled | Medium |
+| `admin.privilege_escalation` | User gained elevated permissions | **Critical** |
+| `admin.settings_changed` | System settings modified | Info |
+| `admin.api_key_created` | New API key generated | Info |
+| `admin.api_key_revoked` | API key disabled/deleted | Medium |
 
-| Event | Description |
-|-------|-------------|
-| `data.export` | Data was exported |
-| `data.import` | Data was imported |
-| `data.bulk_delete` | Bulk data deletion |
-| `data.sensitive_access` | Sensitive data accessed |
-| `data.download` | File was downloaded |
+### Data Events (3)
 
-### Security Events
+| Event | Description | Severity |
+|-------|-------------|----------|
+| `data.export` | Data exported from system | Info |
+| `data.bulk_delete` | Large-scale data deletion | **Critical** |
+| `data.sensitive_access` | Access to sensitive/private data | **Critical** |
 
-| Event | Description |
-|-------|-------------|
-| `security.suspicious_activity` | Suspicious activity detected |
-| `security.rate_limit_exceeded` | Rate limit exceeded |
-| `security.ip_blocked` | IP was blocked |
-| `security.account_locked` | Account was locked |
+### Security Events (4)
+
+| Event | Description | Severity |
+|-------|-------------|----------|
+| `security.suspicious_activity` | Anomalous behavior detected | **Critical** |
+| `security.rate_limit_exceeded` | API rate limit hit | Medium |
+| `security.ip_blocked` | IP blocked due to suspicious activity | Medium |
+| `security.brute_force_detected` | Multiple failed login attempts | **Critical** |
 
 ## Next.js Integration
 

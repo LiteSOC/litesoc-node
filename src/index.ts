@@ -16,26 +16,72 @@ type FetchFunction = (
 ) => Promise<Response>;
 
 /**
- * Authentication events
+ * Standard Authentication Events (8)
+ * These are the primary auth events in the LiteSOC 26-event standard
  */
 export type AuthEvent =
   | "auth.login_success"
   | "auth.login_failed"
   | "auth.logout"
+  | "auth.password_reset"
+  | "auth.mfa_enabled"
+  | "auth.mfa_disabled"
+  | "auth.session_expired"
+  | "auth.token_refreshed";
+
+/**
+ * Standard Authorization Events (4)
+ */
+export type AuthzEvent =
+  | "authz.access_denied"
+  | "authz.role_changed"
+  | "authz.permission_granted"
+  | "authz.permission_revoked";
+
+/**
+ * Standard Admin Events (7)
+ */
+export type AdminEvent =
+  | "admin.user_created"
+  | "admin.user_deleted"
+  | "admin.user_suspended"
+  | "admin.privilege_escalation"
+  | "admin.settings_changed"
+  | "admin.api_key_created"
+  | "admin.api_key_revoked";
+
+/**
+ * Standard Data Events (3)
+ */
+export type DataEvent =
+  | "data.export"
+  | "data.bulk_delete"
+  | "data.sensitive_access";
+
+/**
+ * Standard Security Events (4)
+ */
+export type SecurityEvent =
+  | "security.suspicious_activity"
+  | "security.rate_limit_exceeded"
+  | "security.ip_blocked"
+  | "security.brute_force_detected";
+
+/**
+ * Legacy/Extended Authentication Events (for backward compatibility)
+ */
+export type LegacyAuthEvent =
   | "auth.password_changed"
   | "auth.password_reset_requested"
   | "auth.password_reset_completed"
-  | "auth.mfa_enabled"
-  | "auth.mfa_disabled"
   | "auth.mfa_challenge_success"
   | "auth.mfa_challenge_failed"
   | "auth.session_created"
   | "auth.session_revoked"
-  | "auth.token_refreshed"
-  | "auth.failed"; // Legacy alias
+  | "auth.failed";
 
 /**
- * User events
+ * Legacy/Extended User Events
  */
 export type UserEvent =
   | "user.created"
@@ -47,59 +93,44 @@ export type UserEvent =
   | "user.phone_verified"
   | "user.profile_updated"
   | "user.avatar_changed"
-  | "user.login_failed" // Alternative format
-  | "user.login.failed"; // Dot format
+  | "user.login_failed"
+  | "user.login.failed";
 
 /**
- * Authorization events
+ * Legacy/Extended Authorization Events
  */
-export type AuthzEvent =
+export type LegacyAuthzEvent =
   | "authz.role_assigned"
   | "authz.role_removed"
-  | "authz.role_changed"
-  | "authz.permission_granted"
-  | "authz.permission_revoked"
-  | "authz.access_denied"
   | "authz.access_granted";
 
 /**
- * Admin events
+ * Legacy/Extended Admin Events
  */
-export type AdminEvent =
-  | "admin.privilege_escalation"
+export type LegacyAdminEvent =
   | "admin.user_impersonation"
-  | "admin.settings_changed"
-  | "admin.api_key_created"
-  | "admin.api_key_revoked"
   | "admin.invite_sent"
   | "admin.invite_accepted"
   | "admin.member_removed";
 
 /**
- * Data events
+ * Legacy/Extended Data Events
  */
-export type DataEvent =
-  | "data.export"
+export type LegacyDataEvent =
   | "data.import"
-  | "data.bulk_delete"
   | "data.bulk_update"
-  | "data.sensitive_access"
   | "data.download"
   | "data.upload"
   | "data.shared"
   | "data.unshared";
 
 /**
- * Security events
+ * Legacy/Extended Security Events
  */
-export type SecurityEvent =
-  | "security.suspicious_activity"
-  | "security.rate_limit_exceeded"
-  | "security.ip_blocked"
+export type LegacySecurityEvent =
   | "security.ip_unblocked"
   | "security.account_locked"
   | "security.account_unlocked"
-  | "security.brute_force_detected"
   | "security.impossible_travel"
   | "security.geo_anomaly";
 
@@ -126,17 +157,32 @@ export type BillingEvent =
   | "billing.invoice_paid";
 
 /**
- * All predefined event types
+ * All predefined event types (26 Standard Events + Legacy/Extended)
  */
 export type PredefinedEventType =
   | AuthEvent
-  | UserEvent
   | AuthzEvent
   | AdminEvent
   | DataEvent
   | SecurityEvent
+  | LegacyAuthEvent
+  | UserEvent
+  | LegacyAuthzEvent
+  | LegacyAdminEvent
+  | LegacyDataEvent
+  | LegacySecurityEvent
   | ApiEvent
   | BillingEvent;
+
+/**
+ * The 26 Standard Events (Core LiteSOC Events)
+ */
+export type StandardEventType =
+  | AuthEvent
+  | AuthzEvent
+  | AdminEvent
+  | DataEvent
+  | SecurityEvent;
 
 /**
  * Custom event type (string pattern: category.action)
