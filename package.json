@@ -1,0 +1,62 @@
+{
+  "name": "litesoc",
+  "version": "1.0.0",
+  "description": "Official Node.js/TypeScript SDK for LiteSOC - Security event tracking and threat detection",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "litesoc",
+    "security",
+    "soc",
+    "security-events",
+    "threat-detection",
+    "brute-force",
+    "audit-log",
+    "authentication",
+    "monitoring",
+    "nodejs",
+    "typescript"
+  ],
+  "author": "LiteSOC <support@litesoc.io>",
+  "license": "MIT",
+  "homepage": "https://www.litesoc.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LiteSOC/litesoc-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LiteSOC/litesoc-node/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^10.0.1",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
+  }
+}
