@@ -3,6 +3,7 @@
 Official Node.js/TypeScript SDK for [LiteSOC](https://www.litesoc.io) - Security event tracking and threat detection.
 
 [![npm version](https://badge.fury.io/js/litesoc.svg)](https://www.npmjs.com/package/litesoc)
+[![Tests](https://github.com/LiteSOC/litesoc-node/actions/workflows/test.yml/badge.svg)](https://github.com/LiteSOC/litesoc-node/actions/workflows/test.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
