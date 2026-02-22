@@ -1,6 +1,6 @@
 {
   "name": "litesoc",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Official Node.js/TypeScript SDK for LiteSOC - Security event tracking and threat detection",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -53,10 +53,10 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
+    "@types/node": "^22.0.0",
     "eslint": "^10.0.1",
-    "tsup": "^8.0.1",
-    "typescript": "^5.3.3",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
     "vitest": "^4.0.18"
   }
 }
