@@ -80,8 +80,8 @@ const litesoc = new LiteSOC({
   // Required: Your LiteSOC API key
   apiKey: 'your-api-key',
 
-  // Optional: Custom API endpoint (default: https://www.litesoc.io/api/v1/collect)
-  endpoint: 'https://www.litesoc.io/api/v1/collect',
+  // Optional: Custom API endpoint (default: https://api.litesoc.io/collect)
+  endpoint: 'https://api.litesoc.io/collect',
 
   // Optional: Enable event batching (default: true)
   batching: true,

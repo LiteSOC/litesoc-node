@@ -40,7 +40,7 @@ describe("LiteSOC SDK", () => {
       litesoc.track("auth.login_failed", { actor: "user_123" });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://www.litesoc.io/api/v1/collect",
+        "https://api.litesoc.io/collect",
         expect.any(Object)
       );
     });

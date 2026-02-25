@@ -259,7 +259,7 @@ interface ApiResponse {
 export interface LiteSOCOptions {
   /** Your LiteSOC API key */
   apiKey: string;
-  /** API endpoint (defaults to https://www.litesoc.io/api/v1/collect) */
+  /** API endpoint (defaults to https://api.litesoc.io/collect) */
   endpoint?: string;
   /** Enable batching (defaults to true) */
   batching?: boolean;
@@ -326,7 +326,7 @@ export class LiteSOC {
 
     this.apiKey = options.apiKey;
     this.endpoint =
-      options.endpoint || "https://www.litesoc.io/api/v1/collect";
+      options.endpoint || "https://api.litesoc.io/collect";
     this.batching = options.batching ?? true;
     this.batchSize = options.batchSize ?? 10;
     this.flushInterval = options.flushInterval ?? 5000;
