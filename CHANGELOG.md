@@ -5,6 +5,27 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-26
+
+### Added
+- **Request Timeout** - Added configurable `timeout` option (default: 10 seconds)
+  - Prevents SDK from blocking client applications if LiteSOC API is slow
+  - Uses `AbortController` for reliable timeout handling
+  - Timed-out events are automatically re-queued for retry
+
+### Changed
+- `sendEvents()` method now includes `AbortController` with timeout signal
+- Added `X-LiteSOC-Retry-Count` header to track retry attempts
+
+### Fixed
+- SDK no longer blocks indefinitely if API is unresponsive
+- Improved non-blocking behavior for production applications
+
+### Notes
+- Default timeout is 10 seconds, configurable via `timeout` option
+- Combined with `silent: true` (default), SDK never blocks or throws in production
+- Events that timeout are re-queued up to 3 times before being dropped
+
 ## [1.2.1] - 2026-02-25
 
 ### Fixed

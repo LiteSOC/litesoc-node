@@ -273,6 +273,8 @@ export interface LiteSOCOptions {
   silent?: boolean;
   /** Custom fetch implementation (for Edge runtimes) */
   fetch?: FetchFunction;
+  /** Request timeout in milliseconds (defaults to 10000ms = 10 seconds) */
+  timeout?: number;
 }
 
 // ============================================
@@ -308,6 +310,7 @@ export class LiteSOC {
   private readonly debug: boolean;
   private readonly silent: boolean;
   private readonly fetchFn: FetchFunction;
+  private readonly timeout: number;
 
   private queue: QueuedEvent[] = [];
   private flushTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
@@ -333,6 +336,7 @@ export class LiteSOC {
     this.debug = options.debug ?? false;
     this.silent = options.silent ?? true;
     this.fetchFn = options.fetch ?? fetch;
+    this.timeout = options.timeout ?? 10000; // Default 10 second timeout
 
     // Validate fetch is available
     if (!this.fetchFn) {
@@ -645,9 +649,14 @@ export class LiteSOC {
 
   /**
    * Send events to the LiteSOC API
+   * Uses AbortController for timeout to ensure non-blocking behavior
    */
   private async sendEvents(events: QueuedEvent[]): Promise<void> {
     if (events.length === 0) return;
+
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
       // If single event, send directly; otherwise send as batch
@@ -662,7 +671,10 @@ export class LiteSOC {
           "User-Agent": "litesoc-node/1.0.0",
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -680,6 +692,13 @@ export class LiteSOC {
         throw new Error(result.error || "Unknown API error");
       }
     } catch (error) {
+      clearTimeout(timeoutId);
+
+      // Handle timeout specifically
+      if (error instanceof Error && error.name === "AbortError") {
+        this.log(`Request timed out after ${this.timeout}ms`);
+      }
+
       // Re-queue events on failure (with limit to prevent infinite loop)
       const retryableEvents = events.filter(
         (e) => !((e.metadata as Record<string, number>)._retry_count > 2)
