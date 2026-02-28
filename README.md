@@ -82,8 +82,8 @@ const litesoc = new LiteSOC({
   // Required: Your LiteSOC API key
   apiKey: 'your-api-key',
 
-  // Optional: Custom API endpoint (default: https://api.litesoc.io/collect)
-  endpoint: 'https://api.litesoc.io/collect',
+  // Optional: Custom API base URL (default: https://api.litesoc.io)
+  baseUrl: 'https://api.litesoc.io',
 
   // Optional: Enable event batching (default: true)
   batching: true,
@@ -93,6 +93,9 @@ const litesoc = new LiteSOC({
 
   // Optional: Batch flush interval in ms (default: 5000)
   flushInterval: 5000,
+
+  // Optional: Request timeout in ms (default: 5000)
+  timeout: 5000,
 
   // Optional: Enable debug logging (default: false)
   debug: false,

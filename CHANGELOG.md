@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Management API (Pro & Enterprise)
 - `getAlerts()` - List all security alerts with filtering
 - `getAlert(alertId)` - Get a specific alert by ID
-- `resolveAlert(alertId, notes?)` - Mark an alert as resolved
-- `markAlertSafe(alertId, notes?)` - Mark an alert as safe (false positive)
+- `resolveAlert(alertId, notes?)` - Mark an alert as resolved (uses PATCH)
+- `markAlertSafe(alertId, notes?)` - Mark an alert as safe/false positive (uses PATCH)
 - `getEvents()` - List all security events with filtering
 - `getEvent(eventId)` - Get a specific event by ID
 
@@ -43,7 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Base URL** - Changed from `https://api.litesoc.io/collect` to `https://api.litesoc.io`
-- **Authentication** - Changed from `Authorization: Bearer` to `X-API-Key` header
+- **Authentication** - Changed from `Authorization: Bearer` to `X-API-Key` header for all endpoints
+- **Default Timeout** - Reduced from 10 seconds to **5 seconds** for faster failure detection
+- **resolveAlert Method** - Now uses `PATCH /v1/alerts/{id}` instead of `POST /v1/alerts/{id}/resolve`
+- **markAlertSafe Method** - Now uses `PATCH /v1/alerts/{id}` instead of `POST /v1/alerts/{id}/safe`
 - **Batching Behavior** - Improved batching with better error handling and retry logic
 - **Error Handling** - All API errors now throw typed error classes
 

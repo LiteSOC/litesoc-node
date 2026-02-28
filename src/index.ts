@@ -286,7 +286,7 @@ export interface LiteSOCOptions {
   silent?: boolean;
   /** Custom fetch implementation (for Edge runtimes) */
   fetch?: FetchFunction;
-  /** Request timeout in milliseconds (defaults to 10000ms) */
+  /** Request timeout in milliseconds (defaults to 5000ms) */
   timeout?: number;
 }
 
@@ -440,7 +440,7 @@ export class LiteSOC {
     this.debug = options.debug ?? false;
     this.silent = options.silent ?? true;
     this.fetchFn = options.fetch ?? fetch;
-    this.timeout = options.timeout ?? 10000;
+    this.timeout = options.timeout ?? 5000;
 
     // Validate fetch is available
     if (!this.fetchFn) {
@@ -705,13 +705,16 @@ export class LiteSOC {
       throw new ValidationError("alertId is required");
     }
 
-    const url = `${this.baseUrl}/v1/alerts/${alertId}/resolve`;
-    const body: Record<string, string> = { resolution_type: "resolved" };
+    const url = `${this.baseUrl}/v1/alerts/${alertId}`;
+    const body: Record<string, string> = {
+      status: "resolved",
+      resolution_type: "resolved",
+    };
     if (notes) {
-      body.internal_notes = notes;
+      body.resolution_notes = notes;
     }
 
-    const response = await this.makeRequest<{ data: Alert }>("POST", url, body);
+    const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);
     return response.data;
   }
 
@@ -744,13 +747,16 @@ export class LiteSOC {
       throw new ValidationError("alertId is required");
     }
 
-    const url = `${this.baseUrl}/v1/alerts/${alertId}/safe`;
-    const body: Record<string, string> = {};
+    const url = `${this.baseUrl}/v1/alerts/${alertId}`;
+    const body: Record<string, string> = {
+      status: "dismissed",
+      resolution_type: "false_positive",
+    };
     if (notes) {
-      body.internal_notes = notes;
+      body.resolution_notes = notes;
     }
 
-    const response = await this.makeRequest<{ data: Alert }>("POST", url, body);
+    const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);
     return response.data;
   }
 
@@ -1019,7 +1025,7 @@ export class LiteSOC {
    * Handles authentication, errors, and response parsing
    */
   private async makeRequest<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PATCH" | "DELETE",
     url: string,
     body?: Record<string, unknown>
   ): Promise<T> {
@@ -1039,7 +1045,7 @@ export class LiteSOC {
         signal: controller.signal,
       };
 
-      if (body && method === "POST") {
+      if (body && (method === "POST" || method === "PATCH")) {
         requestInit.body = JSON.stringify(body);
       }
 
@@ -1145,7 +1151,7 @@ export class LiteSOC {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
+          "X-API-Key": this.apiKey,
           "User-Agent": USER_AGENT,
         },
         body: JSON.stringify(body),

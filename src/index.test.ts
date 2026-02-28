@@ -207,7 +207,7 @@ describe("LiteSOC SDK", () => {
           method: "POST",
           headers: expect.objectContaining({
             "Content-Type": "application/json",
-            Authorization: "Bearer test-api-key",
+            "X-API-Key": "test-api-key",
             "User-Agent": "litesoc-node-sdk/2.0.0",
           }),
         })
@@ -535,7 +535,7 @@ describe("LiteSOC SDK", () => {
     });
 
     describe("resolveAlert()", () => {
-      it("should POST to resolve endpoint with notes", async () => {
+      it("should PATCH to alert endpoint with notes", async () => {
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
@@ -546,11 +546,13 @@ describe("LiteSOC SDK", () => {
         const result = await client.resolveAlert("alert-123", "False positive");
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/alerts/alert-123/resolve",
-          expect.objectContaining({ method: "POST" })
+          "https://api.litesoc.io/v1/alerts/alert-123",
+          expect.objectContaining({ method: "PATCH" })
         );
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.internal_notes).toBe("False positive");
+        expect(body.resolution_notes).toBe("False positive");
+        expect(body.status).toBe("resolved");
+        expect(body.resolution_type).toBe("resolved");
         expect(result.status).toBe("resolved");
       });
 
@@ -565,7 +567,7 @@ describe("LiteSOC SDK", () => {
         await client.resolveAlert("alert-123");
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.internal_notes).toBeUndefined();
+        expect(body.resolution_notes).toBeUndefined();
       });
 
       it("should throw ValidationError when alertId is empty", async () => {
@@ -575,7 +577,7 @@ describe("LiteSOC SDK", () => {
     });
 
     describe("markAlertSafe()", () => {
-      it("should POST to safe endpoint with notes", async () => {
+      it("should PATCH to alert endpoint with notes", async () => {
         mockFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
@@ -586,11 +588,13 @@ describe("LiteSOC SDK", () => {
         const result = await client.markAlertSafe("alert-123", "Known behavior");
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/alerts/alert-123/safe",
-          expect.objectContaining({ method: "POST" })
+          "https://api.litesoc.io/v1/alerts/alert-123",
+          expect.objectContaining({ method: "PATCH" })
         );
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.internal_notes).toBe("Known behavior");
+        expect(body.resolution_notes).toBe("Known behavior");
+        expect(body.status).toBe("dismissed");
+        expect(body.resolution_type).toBe("false_positive");
         expect(result.status).toBe("dismissed");
       });
 
@@ -605,7 +609,7 @@ describe("LiteSOC SDK", () => {
         await client.markAlertSafe("alert-123");
 
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-        expect(body.internal_notes).toBeUndefined();
+        expect(body.resolution_notes).toBeUndefined();
       });
 
       it("should throw ValidationError when alertId is empty", async () => {
