@@ -5,6 +5,53 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-03-01
+
+### Added
+
+#### Management API (Pro & Enterprise)
+- `getAlerts()` - List all security alerts with filtering
+- `getAlert(alertId)` - Get a specific alert by ID
+- `resolveAlert(alertId, notes?)` - Mark an alert as resolved
+- `markAlertSafe(alertId, notes?)` - Mark an alert as safe (false positive)
+- `getEvents()` - List all security events with filtering
+- `getEvent(eventId)` - Get a specific event by ID
+
+#### New Error Classes
+- `RateLimitError` - 429 errors with `retryAfter` property
+- `NotFoundError` - 404 errors for missing resources
+- `ValidationError` - 400 errors for invalid requests
+- `PlanRestrictedError` - 403 errors for features requiring plan upgrade
+- `AuthenticationError` - 401 errors for invalid API keys
+
+#### Convenience Methods
+- `trackLoginFailed(actorId, options?)` - Track failed login attempts
+- `trackLoginSuccess(actorId, options?)` - Track successful logins
+- `trackPrivilegeEscalation(actorId, options?)` - Track privilege escalation (critical)
+- `trackSensitiveAccess(actorId, resource, options?)` - Track sensitive data access
+- `trackBulkDelete(actorId, recordCount, options?)` - Track bulk deletions
+- `trackRoleChanged(actorId, oldRole, newRole, options?)` - Track role changes
+- `trackAccessDenied(actorId, resource, options?)` - Track access denied events
+
+#### Developer Experience
+- 100% test coverage (statements, branches, functions, lines)
+- 113 comprehensive tests
+- Jest test framework with coverage reporting
+- GitHub Actions CI workflow
+- ESLint configuration for code quality
+- TypeScript strict mode
+
+### Changed
+- **Base URL** - Changed from `https://api.litesoc.io/collect` to `https://api.litesoc.io`
+- **Authentication** - Changed from `Authorization: Bearer` to `X-API-Key` header
+- **Batching Behavior** - Improved batching with better error handling and retry logic
+- **Error Handling** - All API errors now throw typed error classes
+
+### Breaking Changes
+- Minimum Node.js version is now 18.x
+- API key header changed from `Authorization: Bearer <key>` to `X-API-Key: <key>`
+- Error types are now more specific (use `instanceof` checks)
+
 ## [1.3.0] - 2026-02-26
 
 ### Added

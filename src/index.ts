@@ -1,12 +1,31 @@
 /**
- * LiteSOC Node.js/TypeScript SDK
+ * LiteSOC Node.js/TypeScript SDK v2.0.0
  * Official SDK for security event tracking and threat detection
+ *
+ * Features:
+ * - Event ingestion (all plans)
+ * - Management API: getAlerts, resolveAlert, getEvents (Pro/Enterprise)
+ * - Automatic batching and retry
+ * - TypeScript support with strict types
  *
  * @packageDocumentation
  */
 
 // ============================================
-// TYPE DEFINITIONS
+// CONSTANTS
+// ============================================
+
+/** SDK version */
+export const SDK_VERSION = "2.0.0";
+
+/** Default API base URL */
+export const DEFAULT_BASE_URL = "https://api.litesoc.io";
+
+/** User-Agent header for all requests */
+export const USER_AGENT = `litesoc-node-sdk/${SDK_VERSION}`;
+
+// ============================================
+// TYPE DEFINITIONS - 26 STANDARD EVENTS
 // ============================================
 
 /** Fetch function type for cross-environment compatibility */
@@ -17,7 +36,7 @@ type FetchFunction = (
 
 /**
  * Standard Authentication Events (8)
- * These are the primary auth events in the LiteSOC 26-event standard
+ * Core auth events for tracking user authentication lifecycle
  */
 export type AuthEvent =
   | "auth.login_success"
@@ -31,6 +50,7 @@ export type AuthEvent =
 
 /**
  * Standard Authorization Events (4)
+ * Events for tracking access control changes
  */
 export type AuthzEvent =
   | "authz.access_denied"
@@ -40,6 +60,7 @@ export type AuthzEvent =
 
 /**
  * Standard Admin Events (7)
+ * Events for tracking administrative actions
  */
 export type AdminEvent =
   | "admin.user_created"
@@ -52,14 +73,13 @@ export type AdminEvent =
 
 /**
  * Standard Data Events (3)
+ * Events for tracking data access and modifications
  */
-export type DataEvent =
-  | "data.export"
-  | "data.bulk_delete"
-  | "data.sensitive_access";
+export type DataEvent = "data.export" | "data.bulk_delete" | "data.sensitive_access";
 
 /**
  * Standard Security Events (4)
+ * Events for tracking security-related activities
  */
 export type SecurityEvent =
   | "security.suspicious_activity"
@@ -68,114 +88,8 @@ export type SecurityEvent =
   | "security.brute_force_detected";
 
 /**
- * Legacy/Extended Authentication Events (for backward compatibility)
- */
-export type LegacyAuthEvent =
-  | "auth.password_changed"
-  | "auth.password_reset_requested"
-  | "auth.password_reset_completed"
-  | "auth.mfa_challenge_success"
-  | "auth.mfa_challenge_failed"
-  | "auth.session_created"
-  | "auth.session_revoked"
-  | "auth.failed";
-
-/**
- * Legacy/Extended User Events
- */
-export type UserEvent =
-  | "user.created"
-  | "user.updated"
-  | "user.deleted"
-  | "user.email_changed"
-  | "user.email_verified"
-  | "user.phone_changed"
-  | "user.phone_verified"
-  | "user.profile_updated"
-  | "user.avatar_changed"
-  | "user.login_failed"
-  | "user.login.failed";
-
-/**
- * Legacy/Extended Authorization Events
- */
-export type LegacyAuthzEvent =
-  | "authz.role_assigned"
-  | "authz.role_removed"
-  | "authz.access_granted";
-
-/**
- * Legacy/Extended Admin Events
- */
-export type LegacyAdminEvent =
-  | "admin.user_impersonation"
-  | "admin.invite_sent"
-  | "admin.invite_accepted"
-  | "admin.member_removed";
-
-/**
- * Legacy/Extended Data Events
- */
-export type LegacyDataEvent =
-  | "data.import"
-  | "data.bulk_update"
-  | "data.download"
-  | "data.upload"
-  | "data.shared"
-  | "data.unshared";
-
-/**
- * Legacy/Extended Security Events
- */
-export type LegacySecurityEvent =
-  | "security.ip_unblocked"
-  | "security.account_locked"
-  | "security.account_unlocked"
-  | "security.impossible_travel"
-  | "security.geo_anomaly";
-
-/**
- * API events
- */
-export type ApiEvent =
-  | "api.key_used"
-  | "api.rate_limited"
-  | "api.error"
-  | "api.webhook_sent"
-  | "api.webhook_failed";
-
-/**
- * Billing events
- */
-export type BillingEvent =
-  | "billing.subscription_created"
-  | "billing.subscription_updated"
-  | "billing.subscription_cancelled"
-  | "billing.payment_succeeded"
-  | "billing.payment_failed"
-  | "billing.invoice_created"
-  | "billing.invoice_paid";
-
-/**
- * All predefined event types (26 Standard Events + Legacy/Extended)
- */
-export type PredefinedEventType =
-  | AuthEvent
-  | AuthzEvent
-  | AdminEvent
-  | DataEvent
-  | SecurityEvent
-  | LegacyAuthEvent
-  | UserEvent
-  | LegacyAuthzEvent
-  | LegacyAdminEvent
-  | LegacyDataEvent
-  | LegacySecurityEvent
-  | ApiEvent
-  | BillingEvent;
-
-/**
- * The 26 Standard Events (Core LiteSOC Events)
+ * The 26 Standard Security Events
+ * These are the core events supported by LiteSOC
  */
 export type StandardEventType =
   | AuthEvent
@@ -186,18 +100,42 @@ export type StandardEventType =
 
 /**
  * Custom event type (string pattern: category.action)
+ * Use for events not covered by the 26 standard events
  */
 export type CustomEventType = `${string}.${string}`;
 
 /**
- * All supported event types
+ * All supported event types (standard + custom)
  */
-export type EventType = PredefinedEventType | CustomEventType;
+export type EventType = StandardEventType | CustomEventType;
 
 /**
  * Event severity levels
  */
-export type EventSeverity = "low" | "medium" | "high" | "critical";
+export type EventSeverity = "info" | "warning" | "critical";
+
+/**
+ * Alert severity levels (different from event severity)
+ */
+export type AlertSeverity = "low" | "medium" | "high" | "critical";
+
+/**
+ * Alert status values
+ */
+export type AlertStatus = "open" | "acknowledged" | "resolved" | "dismissed";
+
+/**
+ * Alert type values
+ */
+export type AlertType =
+  | "impossible_travel"
+  | "brute_force_attack"
+  | "geo_anomaly"
+  | "new_device"
+  | "privilege_escalation"
+  | "data_exfiltration"
+  | "suspicious_activity"
+  | "rate_limit_exceeded";
 
 /**
  * Actor information
@@ -224,7 +162,7 @@ export interface TrackOptions {
   actorEmail?: string;
   /** End-user's IP address (the user making the request) */
   userIp?: string;
-  /** Event severity (optional, auto-detected for known events) */
+  /** Event severity (optional, auto-detected for standard events) */
   severity?: EventSeverity;
   /** Additional metadata for the event */
   metadata?: EventMetadata;
@@ -244,9 +182,9 @@ interface QueuedEvent {
 }
 
 /**
- * API response structure
+ * API response structure for event ingestion
  */
-interface ApiResponse {
+interface IngestApiResponse {
   success: boolean;
   event_id?: string;
   events_accepted?: number;
@@ -254,14 +192,89 @@ interface ApiResponse {
 }
 
 /**
+ * Alert object returned from the Management API
+ */
+export interface Alert {
+  id: string;
+  alert_type: AlertType;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  title: string;
+  description: string | null;
+  source_ip: string | null;
+  actor_id: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+  resolution_notes: string | null;
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * Event object returned from the Management API
+ */
+export interface Event {
+  id: string;
+  event_name: string;
+  actor_id: string | null;
+  actor_email: string | null;
+  user_ip: string | null;
+  severity: EventSeverity;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+/**
+ * Options for fetching alerts
+ */
+export interface GetAlertsOptions {
+  /** Filter by alert status */
+  status?: AlertStatus;
+  /** Filter by alert severity */
+  severity?: AlertSeverity;
+  /** Filter by alert type */
+  alertType?: AlertType;
+  /** Maximum number of alerts to return (default: 100, max: 500) */
+  limit?: number;
+  /** Offset for pagination */
+  offset?: number;
+}
+
+/**
+ * Options for fetching events
+ */
+export interface GetEventsOptions {
+  /** Filter by event name (e.g., 'auth.login_failed') */
+  eventName?: string;
+  /** Filter by actor ID */
+  actorId?: string;
+  /** Filter by severity */
+  severity?: EventSeverity;
+  /** Maximum number of events to return (default: 50, max: 100) */
+  limit?: number;
+  /** Offset for pagination */
+  offset?: number;
+}
+
+/**
+ * Paginated response from Management API
+ */
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
  * SDK configuration options
  */
 export interface LiteSOCOptions {
-  /** Your LiteSOC API key */
+  /** Your LiteSOC API key (required) */
   apiKey: string;
-  /** API endpoint (defaults to https://api.litesoc.io/collect) */
-  endpoint?: string;
-  /** Enable batching (defaults to true) */
+  /** Base URL for the API (defaults to https://api.litesoc.io) */
+  baseUrl?: string;
+  /** Enable batching for event ingestion (defaults to true) */
   batching?: boolean;
   /** Batch size before auto-flush (defaults to 10) */
   batchSize?: number;
@@ -269,12 +282,85 @@ export interface LiteSOCOptions {
   flushInterval?: number;
   /** Enable debug logging (defaults to false) */
   debug?: boolean;
-  /** Fail silently on errors (defaults to true) */
+  /** Fail silently on errors (defaults to true for ingestion) */
   silent?: boolean;
   /** Custom fetch implementation (for Edge runtimes) */
   fetch?: FetchFunction;
-  /** Request timeout in milliseconds (defaults to 10000ms = 10 seconds) */
+  /** Request timeout in milliseconds (defaults to 10000ms) */
   timeout?: number;
+}
+
+// ============================================
+// CUSTOM ERROR CLASSES
+// ============================================
+
+/**
+ * Base error class for LiteSOC SDK errors
+ */
+export class LiteSOCError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode?: number,
+    public readonly code?: string
+  ) {
+    super(message);
+    this.name = "LiteSOCError";
+  }
+}
+
+/**
+ * Error thrown when authentication fails (401)
+ */
+export class AuthenticationError extends LiteSOCError {
+  constructor(message = "Invalid API key. Please check your credentials.") {
+    super(message, 401, "UNAUTHORIZED");
+    this.name = "AuthenticationError";
+  }
+}
+
+/**
+ * Error thrown when the plan doesn't support a feature (403)
+ */
+export class PlanRestrictedError extends LiteSOCError {
+  constructor(
+    message = "This feature requires a Pro or Enterprise plan. Upgrade at https://www.litesoc.io/pricing"
+  ) {
+    super(message, 403, "PLAN_RESTRICTED");
+    this.name = "PlanRestrictedError";
+  }
+}
+
+/**
+ * Error thrown when rate limit is exceeded (429)
+ */
+export class RateLimitError extends LiteSOCError {
+  constructor(
+    message = "Rate limit exceeded. Please slow down your requests.",
+    public readonly retryAfter?: number
+  ) {
+    super(message, 429, "RATE_LIMIT_EXCEEDED");
+    this.name = "RateLimitError";
+  }
+}
+
+/**
+ * Error thrown when a resource is not found (404)
+ */
+export class NotFoundError extends LiteSOCError {
+  constructor(message = "Resource not found") {
+    super(message, 404, "NOT_FOUND");
+    this.name = "NotFoundError";
+  }
+}
+
+/**
+ * Error thrown for validation errors (400)
+ */
+export class ValidationError extends LiteSOCError {
+  constructor(message: string) {
+    super(message, 400, "VALIDATION_ERROR");
+    this.name = "ValidationError";
+  }
 }
 
 // ============================================
@@ -282,7 +368,11 @@ export interface LiteSOCOptions {
 // ============================================
 
 /**
- * LiteSOC SDK for tracking security events
+ * LiteSOC SDK for security event tracking and management
+ *
+ * The SDK provides two main capabilities:
+ * 1. **Event Ingestion** (all plans): Track security events with `track()`
+ * 2. **Management API** (Pro/Enterprise): Query alerts and events
  *
  * @example
  * ```typescript
@@ -290,12 +380,18 @@ export interface LiteSOCOptions {
  *
  * const litesoc = new LiteSOC({ apiKey: 'your-api-key' });
  *
- * // Track a login failure
+ * // Track a login failure (all plans)
  * await litesoc.track('auth.login_failed', {
  *   actor: { id: 'user_123', email: 'user@example.com' },
  *   userIp: '192.168.1.1',
  *   metadata: { reason: 'invalid_password' }
  * });
+ *
+ * // Get alerts (Pro/Enterprise only)
+ * const alerts = await litesoc.getAlerts({ status: 'open', severity: 'critical' });
+ *
+ * // Resolve an alert (Pro/Enterprise only)
+ * await litesoc.resolveAlert('alert_123', 'Verified as false positive');
  *
  * // Flush remaining events before shutdown
  * await litesoc.flush();
@@ -303,7 +399,7 @@ export interface LiteSOCOptions {
  */
 export class LiteSOC {
   private readonly apiKey: string;
-  private readonly endpoint: string;
+  private readonly baseUrl: string;
   private readonly batching: boolean;
   private readonly batchSize: number;
   private readonly flushInterval: number;
@@ -321,6 +417,15 @@ export class LiteSOC {
    *
    * @param options - SDK configuration options
    * @throws Error if apiKey is not provided
+   *
+   * @example
+   * ```typescript
+   * const litesoc = new LiteSOC({
+   *   apiKey: 'lsk_...',
+   *   debug: true,  // Enable debug logging
+   *   batching: true,  // Enable event batching (default)
+   * });
+   * ```
    */
   constructor(options: LiteSOCOptions) {
     if (!options.apiKey) {
@@ -328,15 +433,14 @@ export class LiteSOC {
     }
 
     this.apiKey = options.apiKey;
-    this.endpoint =
-      options.endpoint || "https://api.litesoc.io/collect";
+    this.baseUrl = options.baseUrl || DEFAULT_BASE_URL;
     this.batching = options.batching ?? true;
     this.batchSize = options.batchSize ?? 10;
     this.flushInterval = options.flushInterval ?? 5000;
     this.debug = options.debug ?? false;
     this.silent = options.silent ?? true;
     this.fetchFn = options.fetch ?? fetch;
-    this.timeout = options.timeout ?? 10000; // Default 10 second timeout
+    this.timeout = options.timeout ?? 10000;
 
     // Validate fetch is available
     if (!this.fetchFn) {
@@ -345,15 +449,33 @@ export class LiteSOC {
       );
     }
 
-    this.log("Initialized with endpoint:", this.endpoint);
+    this.log("Initialized with baseUrl:", this.baseUrl);
   }
+
+  // ============================================
+  // EVENT INGESTION (ALL PLANS)
+  // ============================================
 
   /**
    * Track a security event
    *
-   * @param eventName - The event type (e.g., 'auth.login_failed')
+   * This method is available on all plans (Free, Pro, Enterprise).
+   * Events are sent to the `/collect` endpoint.
+   *
+   * @param eventName - The event type. Use one of the 26 standard events
+   *   (e.g., 'auth.login_failed') or a custom event in 'category.action' format.
    * @param options - Event options including actor, IP, and metadata
    * @returns Promise that resolves when the event is queued or sent
+   *
+   * @remarks
+   * **Plan availability:** Free, Pro, Enterprise
+   *
+   * **Standard events (26):**
+   * - Auth: login_success, login_failed, logout, password_reset, mfa_enabled, mfa_disabled, session_expired, token_refreshed
+   * - Authz: access_denied, role_changed, permission_granted, permission_revoked
+   * - Admin: user_created, user_deleted, user_suspended, privilege_escalation, settings_changed, api_key_created, api_key_revoked
+   * - Data: export, bulk_delete, sensitive_access
+   * - Security: suspicious_activity, rate_limit_exceeded, ip_blocked, brute_force_detected
    *
    * @example
    * ```typescript
@@ -361,13 +483,14 @@ export class LiteSOC {
    * await litesoc.track('auth.login_failed', {
    *   actor: { id: 'user_123', email: 'user@example.com' },
    *   userIp: '192.168.1.1',
+   *   severity: 'warning',
    *   metadata: { reason: 'invalid_password', attempts: 3 }
    * });
    *
    * // Track with shorthand actor
-   * await litesoc.track('user.created', {
-   *   actor: 'user_456',
-   *   actorEmail: 'newuser@example.com'
+   * await litesoc.track('admin.user_created', {
+   *   actor: 'admin_456',
+   *   actorEmail: 'admin@example.com'
    * });
    * ```
    */
@@ -385,7 +508,6 @@ export class LiteSOC {
           };
         }
       } else if (options.actorEmail) {
-        // If only email is provided, use it as both id and email
         actor = { id: options.actorEmail, email: options.actorEmail };
       }
 
@@ -396,10 +518,8 @@ export class LiteSOC {
         user_ip: options.userIp || null,
         metadata: {
           ...options.metadata,
-          // Auto-enrich with SDK info
           _sdk: "litesoc-node",
-          _sdk_version: "1.0.0",
-          // Include severity if provided
+          _sdk_version: SDK_VERSION,
           ...(options.severity ? { _severity: options.severity } : {}),
         },
         timestamp:
@@ -411,19 +531,15 @@ export class LiteSOC {
       this.log("Tracking event:", eventName, event);
 
       if (this.batching) {
-        // Add to queue
         this.queue.push(event);
         this.log(`Event queued. Queue size: ${this.queue.length}`);
 
-        // Auto-flush if batch size reached
         if (this.queue.length >= this.batchSize) {
           await this.flush();
         } else {
-          // Schedule flush if not already scheduled
           this.scheduleFlush();
         }
       } else {
-        // Send immediately
         await this.sendEvents([event]);
       }
     } catch (error) {
@@ -436,6 +552,9 @@ export class LiteSOC {
    *
    * @returns Promise that resolves when all events are sent
    *
+   * @remarks
+   * **Plan availability:** Free, Pro, Enterprise
+   *
    * @example
    * ```typescript
    * // Flush before application shutdown
@@ -445,19 +564,16 @@ export class LiteSOC {
    * ```
    */
   async flush(): Promise<void> {
-    // Prevent concurrent flushes
     if (this.isFlushing) {
       this.log("Flush already in progress, skipping");
       return;
     }
 
-    // Clear scheduled flush
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
 
-    // Get events to send
     const events = [...this.queue];
     this.queue = [];
 
@@ -475,6 +591,249 @@ export class LiteSOC {
       this.isFlushing = false;
     }
   }
+
+  // ============================================
+  // MANAGEMENT API (PRO/ENTERPRISE ONLY)
+  // ============================================
+
+  /**
+   * Get security alerts from the Management API
+   *
+   * Retrieves alerts that have been triggered by LiteSOC's threat detection.
+   * Alerts are automatically generated when suspicious patterns are detected.
+   *
+   * @param options - Filter and pagination options
+   * @returns Promise resolving to paginated alert data
+   *
+   * @remarks
+   * **Plan availability:** Pro, Enterprise only
+   *
+   * Free plan users will receive a `PlanRestrictedError`.
+   *
+   * @throws {PlanRestrictedError} When called with a Free plan API key
+   * @throws {AuthenticationError} When the API key is invalid
+   * @throws {RateLimitError} When rate limit is exceeded
+   *
+   * @example
+   * ```typescript
+   * // Get all open critical alerts
+   * const { data: alerts, total } = await litesoc.getAlerts({
+   *   status: 'open',
+   *   severity: 'critical',
+   *   limit: 50
+   * });
+   *
+   * console.log(`Found ${total} critical alerts`);
+   * for (const alert of alerts) {
+   *   console.log(`${alert.title} - ${alert.alert_type}`);
+   * }
+   * ```
+   */
+  async getAlerts(options: GetAlertsOptions = {}): Promise<PaginatedResponse<Alert>> {
+    const params = new URLSearchParams();
+
+    if (options.status) params.append("status", options.status);
+    if (options.severity) params.append("severity", options.severity);
+    if (options.alertType) params.append("alert_type", options.alertType);
+    if (options.limit) params.append("limit", String(options.limit));
+    if (options.offset) params.append("offset", String(options.offset));
+
+    const queryString = params.toString();
+    const url = `${this.baseUrl}/v1/alerts${queryString ? `?${queryString}` : ""}`;
+
+    const response = await this.makeRequest<PaginatedResponse<Alert>>("GET", url);
+    return response;
+  }
+
+  /**
+   * Get a single alert by ID
+   *
+   * @param alertId - The unique alert ID
+   * @returns Promise resolving to the alert
+   *
+   * @remarks
+   * **Plan availability:** Pro, Enterprise only
+   *
+   * @throws {PlanRestrictedError} When called with a Free plan API key
+   * @throws {NotFoundError} When the alert doesn't exist
+   * @throws {AuthenticationError} When the API key is invalid
+   *
+   * @example
+   * ```typescript
+   * const alert = await litesoc.getAlert('alert_abc123');
+   * console.log(`Alert: ${alert.title} (${alert.status})`);
+   * ```
+   */
+  async getAlert(alertId: string): Promise<Alert> {
+    if (!alertId) {
+      throw new ValidationError("alertId is required");
+    }
+
+    const url = `${this.baseUrl}/v1/alerts/${alertId}`;
+    const response = await this.makeRequest<{ data: Alert }>("GET", url);
+    return response.data;
+  }
+
+  /**
+   * Resolve an alert
+   *
+   * Marks an alert as resolved with optional resolution notes.
+   * This is useful for closing alerts after investigation.
+   *
+   * @param alertId - The unique alert ID to resolve
+   * @param notes - Optional resolution notes explaining how the alert was resolved
+   * @returns Promise resolving to the updated alert
+   *
+   * @remarks
+   * **Plan availability:** Pro, Enterprise only
+   *
+   * @throws {PlanRestrictedError} When called with a Free plan API key
+   * @throws {NotFoundError} When the alert doesn't exist
+   * @throws {AuthenticationError} When the API key is invalid
+   *
+   * @example
+   * ```typescript
+   * const alert = await litesoc.resolveAlert(
+   *   'alert_abc123',
+   *   'Verified as authorized access by admin team'
+   * );
+   * console.log(`Alert resolved at: ${alert.resolved_at}`);
+   * ```
+   */
+  async resolveAlert(alertId: string, notes?: string): Promise<Alert> {
+    if (!alertId) {
+      throw new ValidationError("alertId is required");
+    }
+
+    const url = `${this.baseUrl}/v1/alerts/${alertId}/resolve`;
+    const body: Record<string, string> = { resolution_type: "resolved" };
+    if (notes) {
+      body.internal_notes = notes;
+    }
+
+    const response = await this.makeRequest<{ data: Alert }>("POST", url, body);
+    return response.data;
+  }
+
+  /**
+   * Mark an alert as safe (false positive)
+   *
+   * Marks an alert as dismissed/safe, indicating it was a false positive.
+   *
+   * @param alertId - The unique alert ID to mark as safe
+   * @param notes - Optional notes explaining why this is a false positive
+   * @returns Promise resolving to the updated alert
+   *
+   * @remarks
+   * **Plan availability:** Pro, Enterprise only
+   *
+   * @throws {PlanRestrictedError} When called with a Free plan API key
+   * @throws {NotFoundError} When the alert doesn't exist
+   * @throws {AuthenticationError} When the API key is invalid
+   *
+   * @example
+   * ```typescript
+   * const alert = await litesoc.markAlertSafe(
+   *   'alert_abc123',
+   *   'User was traveling for business, confirmed via HR'
+   * );
+   * ```
+   */
+  async markAlertSafe(alertId: string, notes?: string): Promise<Alert> {
+    if (!alertId) {
+      throw new ValidationError("alertId is required");
+    }
+
+    const url = `${this.baseUrl}/v1/alerts/${alertId}/safe`;
+    const body: Record<string, string> = {};
+    if (notes) {
+      body.internal_notes = notes;
+    }
+
+    const response = await this.makeRequest<{ data: Alert }>("POST", url, body);
+    return response.data;
+  }
+
+  /**
+   * Get security events from the Management API
+   *
+   * Retrieves raw security events (audit logs) that have been tracked.
+   * Use this to query historical events for investigation or reporting.
+   *
+   * @param options - Filter and pagination options
+   * @returns Promise resolving to paginated event data
+   *
+   * @remarks
+   * **Plan availability:** Free (limited), Pro, Enterprise
+   *
+   * - Free plan: 7-day retention, max 100 events per request
+   * - Pro plan: 30-day retention, max 100 events per request
+   * - Enterprise plan: 90-day retention, max 100 events per request
+   *
+   * @throws {AuthenticationError} When the API key is invalid
+   * @throws {RateLimitError} When rate limit is exceeded
+   *
+   * @example
+   * ```typescript
+   * // Get recent failed logins
+   * const { data: events } = await litesoc.getEvents({
+   *   eventName: 'auth.login_failed',
+   *   severity: 'warning',
+   *   limit: 50
+   * });
+   *
+   * for (const event of events) {
+   *   console.log(`${event.event_name} from ${event.user_ip} at ${event.created_at}`);
+   * }
+   * ```
+   */
+  async getEvents(options: GetEventsOptions = {}): Promise<PaginatedResponse<Event>> {
+    const params = new URLSearchParams();
+
+    if (options.eventName) params.append("event_name", options.eventName);
+    if (options.actorId) params.append("actor_id", options.actorId);
+    if (options.severity) params.append("severity", options.severity);
+    if (options.limit) params.append("limit", String(options.limit));
+    if (options.offset) params.append("offset", String(options.offset));
+
+    const queryString = params.toString();
+    const url = `${this.baseUrl}/v1/events${queryString ? `?${queryString}` : ""}`;
+
+    const response = await this.makeRequest<PaginatedResponse<Event>>("GET", url);
+    return response;
+  }
+
+  /**
+   * Get a single event by ID
+   *
+   * @param eventId - The unique event ID
+   * @returns Promise resolving to the event
+   *
+   * @remarks
+   * **Plan availability:** Free (within retention), Pro, Enterprise
+   *
+   * @throws {NotFoundError} When the event doesn't exist or is outside retention period
+   * @throws {AuthenticationError} When the API key is invalid
+   *
+   * @example
+   * ```typescript
+   * const event = await litesoc.getEvent('evt_abc123');
+   * console.log(`Event: ${event.event_name} by ${event.actor_id}`);
+   * ```
+   */
+  async getEvent(eventId: string): Promise<Event> {
+    if (!eventId) {
+      throw new ValidationError("eventId is required");
+    }
+
+    const url = `${this.baseUrl}/v1/events/${eventId}`;
+    const response = await this.makeRequest<{ data: Event }>("GET", url);
+    return response.data;
+  }
+
+  // ============================================
+  // UTILITY METHODS
+  // ============================================
 
   /**
    * Get the current queue size
@@ -503,20 +862,18 @@ export class LiteSOC {
    */
   async shutdown(): Promise<void> {
     this.log("Shutting down...");
-    await this.flush();
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
+    await this.flush(); // flush() already clears the flushTimer
     this.log("Shutdown complete");
   }
 
   // ============================================
-  // CONVENIENCE METHODS
+  // CONVENIENCE METHODS (INGESTION)
   // ============================================
 
   /**
    * Track a login failure event
+   *
+   * @remarks **Plan availability:** Free, Pro, Enterprise
    */
   async trackLoginFailed(
     actorId: string,
@@ -530,6 +887,8 @@ export class LiteSOC {
 
   /**
    * Track a login success event
+   *
+   * @remarks **Plan availability:** Free, Pro, Enterprise
    */
   async trackLoginSuccess(
     actorId: string,
@@ -543,6 +902,8 @@ export class LiteSOC {
 
   /**
    * Track a privilege escalation event
+   *
+   * @remarks **Plan availability:** Free, Pro, Enterprise
    */
   async trackPrivilegeEscalation(
     actorId: string,
@@ -557,6 +918,8 @@ export class LiteSOC {
 
   /**
    * Track a sensitive data access event
+   *
+   * @remarks **Plan availability:** Free, Pro, Enterprise
    */
   async trackSensitiveAccess(
     actorId: string,
@@ -565,7 +928,6 @@ export class LiteSOC {
   ): Promise<void> {
     return this.track("data.sensitive_access", {
       actor: actorId,
-      severity: "high",
       metadata: {
         resource,
         ...options.metadata,
@@ -576,6 +938,8 @@ export class LiteSOC {
 
   /**
    * Track a bulk delete event
+   *
+   * @remarks **Plan availability:** Free, Pro, Enterprise
    */
   async trackBulkDelete(
     actorId: string,
@@ -584,7 +948,6 @@ export class LiteSOC {
   ): Promise<void> {
     return this.track("data.bulk_delete", {
       actor: actorId,
-      severity: "high",
       metadata: {
         records_deleted: recordCount,
         ...options.metadata,
@@ -595,6 +958,8 @@ export class LiteSOC {
 
   /**
    * Track a role change event
+   *
+   * @remarks **Plan availability:** Free, Pro, Enterprise
    */
   async trackRoleChanged(
     actorId: string,
@@ -615,6 +980,8 @@ export class LiteSOC {
 
   /**
    * Track an access denied event
+   *
+   * @remarks **Plan availability:** Free, Pro, Enterprise
    */
   async trackAccessDenied(
     actorId: string,
@@ -648,27 +1015,138 @@ export class LiteSOC {
   }
 
   /**
-   * Send events to the LiteSOC API
-   * Uses AbortController for timeout to ensure non-blocking behavior
+   * Make a request to the Management API
+   * Handles authentication, errors, and response parsing
    */
-  private async sendEvents(events: QueuedEvent[]): Promise<void> {
-    if (events.length === 0) return;
-
-    // Create AbortController for timeout
+  private async makeRequest<T>(
+    method: "GET" | "POST" | "DELETE",
+    url: string,
+    body?: Record<string, unknown>
+  ): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      // If single event, send directly; otherwise send as batch
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-API-Key": this.apiKey,
+        "User-Agent": USER_AGENT,
+      };
+
+      const requestInit: RequestInit = {
+        method,
+        headers,
+        signal: controller.signal,
+      };
+
+      if (body && method === "POST") {
+        requestInit.body = JSON.stringify(body);
+      }
+
+      this.log(`${method} ${url}`);
+      const response = await this.fetchFn(url, requestInit);
+      clearTimeout(timeoutId);
+
+      // Handle error responses
+      if (!response.ok) {
+        await this.handleApiError(response);
+      }
+
+      const data = await response.json();
+      return data as T;
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof LiteSOCError) {
+        throw error;
+      }
+
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new LiteSOCError(`Request timed out after ${this.timeout}ms`, 408, "TIMEOUT");
+      }
+
+      throw new LiteSOCError(
+        error instanceof Error ? error.message : "Unknown error",
+        undefined,
+        "UNKNOWN"
+      );
+    }
+  }
+
+  /**
+   * Handle API error responses and throw appropriate errors
+   */
+  private async handleApiError(response: Response): Promise<never> {
+    let errorBody: { error?: { code?: string; message?: string } } = {};
+
+    try {
+      errorBody = await response.json();
+    } catch {
+      // Response body is not JSON
+    }
+
+    const errorCode = errorBody?.error?.code;
+    const errorMessage = errorBody?.error?.message;
+
+    switch (response.status) {
+      case 401:
+        throw new AuthenticationError(
+          errorMessage || "Invalid API key. Please check your credentials."
+        );
+
+      case 403:
+        if (errorCode === "PLAN_RESTRICTED") {
+          throw new PlanRestrictedError(
+            errorMessage ||
+              "This feature requires a Pro or Enterprise plan. Upgrade at https://www.litesoc.io/pricing"
+          );
+        }
+        throw new LiteSOCError(errorMessage || "Access forbidden", 403, errorCode || "FORBIDDEN");
+
+      case 404:
+        throw new NotFoundError(errorMessage || "Resource not found");
+
+      case 429: {
+        const retryAfter = parseInt(response.headers.get("Retry-After") || "60", 10);
+        throw new RateLimitError(
+          errorMessage || `Rate limit exceeded. Please wait ${retryAfter} seconds before retrying.`,
+          retryAfter
+        );
+      }
+
+      case 400:
+        throw new ValidationError(errorMessage || "Invalid request");
+
+      default:
+        throw new LiteSOCError(
+          errorMessage || `API error: ${response.status} ${response.statusText}`,
+          response.status,
+          errorCode
+        );
+    }
+  }
+
+  /**
+   * Send events to the LiteSOC ingestion API
+   */
+  private async sendEvents(events: QueuedEvent[]): Promise<void> {
+    /* istanbul ignore if -- defensive check, flush() already filters empty */
+    if (events.length === 0) return;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
       const isBatch = events.length > 1;
       const body = isBatch ? { events } : events[0];
+      const url = `${this.baseUrl}/collect`;
 
-      const response = await this.fetchFn(this.endpoint, {
+      const response = await this.fetchFn(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
-          "User-Agent": "litesoc-node/1.0.0",
+          "User-Agent": USER_AGENT,
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -681,7 +1159,7 @@ export class LiteSOC {
         throw new Error(`API error ${response.status}: ${errorText}`);
       }
 
-      const result: ApiResponse = await response.json();
+      const result: IngestApiResponse = await response.json();
 
       if (result.success) {
         this.log(
@@ -694,7 +1172,6 @@ export class LiteSOC {
     } catch (error) {
       clearTimeout(timeoutId);
 
-      // Handle timeout specifically
       if (error instanceof Error && error.name === "AbortError") {
         this.log(`Request timed out after ${this.timeout}ms`);
       }
@@ -722,8 +1199,7 @@ export class LiteSOC {
    * Handle errors based on silent mode
    */
   private handleError(context: string, error: unknown): void {
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : "Unknown error";
 
     if (this.silent) {
       this.log(`Error in ${context}: ${message}`);

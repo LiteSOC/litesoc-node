@@ -3,7 +3,9 @@
 Official Node.js/TypeScript SDK for [LiteSOC](https://www.litesoc.io) - Security event tracking and threat detection.
 
 [![npm version](https://badge.fury.io/js/litesoc.svg)](https://www.npmjs.com/package/litesoc)
-[![Tests](https://github.com/LiteSOC/litesoc-node/actions/workflows/test.yml/badge.svg)](https://github.com/LiteSOC/litesoc-node/actions/workflows/test.yml)
+[![CI](https://github.com/LiteSOC/litesoc-node/actions/workflows/ci.yml/badge.svg)](https://github.com/LiteSOC/litesoc-node/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/LiteSOC/litesoc-node)
+[![ESLint](https://img.shields.io/badge/eslint-passing-brightgreen.svg)](https://github.com/LiteSOC/litesoc-node)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -398,6 +400,101 @@ const invalid: EventType = 'invalid'; // ❌ Type error
 // Custom events are also supported
 const custom: EventType = 'my.custom_event'; // ✅
 ```
+
+## Development
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm, yarn, or pnpm
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/LiteSOC/litesoc-node.git
+cd litesoc-node
+
+# Install dependencies
+npm install
+```
+
+### Scripts
+
+```bash
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Lint code
+npm run lint
+
+# Fix lint errors
+npm run lint:fix
+
+# Type check
+npm run typecheck
+
+# Build for production
+npm run build
+
+# Build in watch mode (development)
+npm run dev
+```
+
+### Testing
+
+The SDK uses Jest for testing with 100% code coverage:
+
+```bash
+# Run all tests
+npm test
+
+# Run tests with coverage report
+npm run test:coverage
+
+# Watch mode for development
+npm run test:watch
+```
+
+### Code Quality
+
+```bash
+# ESLint
+npm run lint
+
+# Fix auto-fixable issues
+npm run lint:fix
+
+# TypeScript type checking
+npm run typecheck
+```
+
+### Building
+
+```bash
+# Build ESM, CJS, and TypeScript declarations
+npm run build
+
+# Output:
+# - dist/index.js      (CommonJS)
+# - dist/index.mjs     (ESM)
+# - dist/index.d.ts    (TypeScript declarations)
+```
+
+### CI/CD
+
+The project uses GitHub Actions for continuous integration:
+
+- **Lint**: ESLint checks on every push
+- **Test**: Jest tests with coverage on Node.js 18.x and 20.x
+- **Build**: TypeScript compilation verification
+- **Coverage**: 100% code coverage requirement
 
 ## License
 
