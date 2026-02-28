@@ -1,5 +1,5 @@
 /**
- * LiteSOC Node.js/TypeScript SDK v2.0.0
+ * LiteSOC Node.js/TypeScript SDK v2.1.0
  * Official SDK for security event tracking and threat detection
  *
  * Features:
