@@ -509,7 +509,7 @@ describe("LiteSOC SDK", () => {
         const result = await client.getAlerts();
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/alerts",
+          "https://api.litesoc.io/alerts",
           expect.objectContaining({ method: "GET" })
         );
         expect(result.data).toEqual({ data: [], total: 0, limit: 100, offset: 0 });
@@ -571,7 +571,7 @@ describe("LiteSOC SDK", () => {
         const result = await client.getAlert("alert-123");
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/alerts/alert-123",
+          "https://api.litesoc.io/alerts/alert-123",
           expect.objectContaining({ method: "GET" })
         );
         expect(result.data.id).toBe("alert-123");
@@ -598,7 +598,7 @@ describe("LiteSOC SDK", () => {
         const result = await client.resolveAlert("alert-123", "False positive");
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/alerts/alert-123",
+          "https://api.litesoc.io/alerts/alert-123",
           expect.objectContaining({ method: "PATCH" })
         );
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -640,7 +640,7 @@ describe("LiteSOC SDK", () => {
         const result = await client.markAlertSafe("alert-123", "Known behavior");
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/alerts/alert-123",
+          "https://api.litesoc.io/alerts/alert-123",
           expect.objectContaining({ method: "PATCH" })
         );
         const body = JSON.parse(mockFetch.mock.calls[0][1].body);
@@ -682,7 +682,7 @@ describe("LiteSOC SDK", () => {
         const result = await client.getEvents();
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/events",
+          "https://api.litesoc.io/events",
           expect.objectContaining({ method: "GET" })
         );
         expect(result.data).toEqual({ data: [], total: 0, limit: 50, offset: 0 });
@@ -722,7 +722,7 @@ describe("LiteSOC SDK", () => {
         const result = await client.getEvent("evt-123");
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/events/evt-123",
+          "https://api.litesoc.io/events/evt-123",
           expect.objectContaining({ method: "GET" })
         );
         expect(result.data.id).toBe("evt-123");
@@ -749,7 +749,7 @@ describe("LiteSOC SDK", () => {
         const result = await client.getPlanInfo();
 
         expect(mockFetch).toHaveBeenCalledWith(
-          "https://api.litesoc.io/v1/events?limit=1",
+          "https://api.litesoc.io/events?limit=1",
           expect.objectContaining({ method: "GET" })
         );
         expect(result.plan).toBe("pro");

@@ -733,7 +733,7 @@ export class LiteSOC {
     if (options.offset) params.append("offset", String(options.offset));
 
     const queryString = params.toString();
-    const url = `${this.baseUrl}/v1/alerts${queryString ? `?${queryString}` : ""}`;
+    const url = `${this.baseUrl}/alerts${queryString ? `?${queryString}` : ""}`;
 
     const response = await this.makeRequest<PaginatedResponse<Alert>>("GET", url);
     return response;
@@ -764,7 +764,7 @@ export class LiteSOC {
       throw new ValidationError("alertId is required");
     }
 
-    const url = `${this.baseUrl}/v1/alerts/${alertId}`;
+    const url = `${this.baseUrl}/alerts/${alertId}`;
     const response = await this.makeRequest<{ data: Alert }>("GET", url);
     return { data: response.data.data, metadata: response.metadata };
   }
@@ -800,7 +800,7 @@ export class LiteSOC {
       throw new ValidationError("alertId is required");
     }
 
-    const url = `${this.baseUrl}/v1/alerts/${alertId}`;
+    const url = `${this.baseUrl}/alerts/${alertId}`;
     const body: Record<string, string> = {
       status: "resolved",
       resolution_type: "resolved",
@@ -842,7 +842,7 @@ export class LiteSOC {
       throw new ValidationError("alertId is required");
     }
 
-    const url = `${this.baseUrl}/v1/alerts/${alertId}`;
+    const url = `${this.baseUrl}/alerts/${alertId}`;
     const body: Record<string, string> = {
       status: "dismissed",
       resolution_type: "false_positive",
@@ -904,7 +904,7 @@ export class LiteSOC {
     if (options.offset) params.append("offset", String(options.offset));
 
     const queryString = params.toString();
-    const url = `${this.baseUrl}/v1/events${queryString ? `?${queryString}` : ""}`;
+    const url = `${this.baseUrl}/events${queryString ? `?${queryString}` : ""}`;
 
     const response = await this.makeRequest<PaginatedResponse<Event>>("GET", url);
     return response;
@@ -934,7 +934,7 @@ export class LiteSOC {
       throw new ValidationError("eventId is required");
     }
 
-    const url = `${this.baseUrl}/v1/events/${eventId}`;
+    const url = `${this.baseUrl}/events/${eventId}`;
     const response = await this.makeRequest<{ data: Event }>("GET", url);
     return { data: response.data.data, metadata: response.metadata };
   }
@@ -1011,7 +1011,7 @@ export class LiteSOC {
    */
   async getPlanInfo(): Promise<PlanInfo> {
     // Make a minimal request to retrieve plan headers
-    const url = `${this.baseUrl}/v1/events?limit=1`;
+    const url = `${this.baseUrl}/events?limit=1`;
     const response = await this.makeRequest<PaginatedResponse<Event>>("GET", url);
 
     const { plan, retentionDays, cutoffDate } = response.metadata;
