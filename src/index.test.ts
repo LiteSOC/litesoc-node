@@ -12,18 +12,62 @@ import {
   LiteSOCError,
 } from "./index";
 
+/**
+ * Helper to create a mock response with plan headers
+ */
+function createMockResponse(
+  data: unknown,
+  options: {
+    ok?: boolean;
+    status?: number;
+    plan?: "free" | "pro" | "enterprise";
+    retentionDays?: number;
+    cutoffDate?: string;
+    headers?: Record<string, string>;
+  } = {}
+): {
+  ok: boolean;
+  status: number;
+  headers: { get: (name: string) => string | null };
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+} {
+  const {
+    ok = true,
+    status = 200,
+    plan = "pro",
+    retentionDays = 30,
+    cutoffDate = "2026-02-01T00:00:00Z",
+    headers = {},
+  } = options;
+
+  const allHeaders: Record<string, string> = {
+    "X-LiteSOC-Plan": plan,
+    "X-LiteSOC-Retention": String(retentionDays),
+    "X-LiteSOC-Cutoff": cutoffDate,
+    ...headers,
+  };
+
+  return {
+    ok,
+    status,
+    headers: {
+      get: (name: string) => allHeaders[name] || null,
+    },
+    json: async () => data,
+    text: async () => JSON.stringify(data),
+  };
+}
+
 describe("LiteSOC SDK", () => {
   let mockFetch: jest.Mock;
   const originalFetch = global.fetch;
 
   beforeEach(() => {
     jest.useFakeTimers();
-    mockFetch = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true }),
-      text: async () => "OK",
-    });
+    mockFetch = jest.fn().mockResolvedValue(
+      createMockResponse({ success: true })
+    );
     global.fetch = mockFetch;
   });
 
@@ -35,11 +79,11 @@ describe("LiteSOC SDK", () => {
 
   describe("Constants", () => {
     it("should export SDK_VERSION", () => {
-      expect(SDK_VERSION).toBe("2.0.0");
+      expect(SDK_VERSION).toBe("2.0.1");
     });
 
     it("should export USER_AGENT", () => {
-      expect(USER_AGENT).toBe("litesoc-node-sdk/2.0.0");
+      expect(USER_AGENT).toBe("litesoc-node-sdk/2.0.1");
     });
 
     it("should export DEFAULT_BASE_URL", () => {
@@ -208,7 +252,7 @@ describe("LiteSOC SDK", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             "X-API-Key": "test-api-key",
-            "User-Agent": "litesoc-node-sdk/2.0.0",
+            "User-Agent": "litesoc-node-sdk/2.0.1",
           }),
         })
       );
@@ -327,7 +371,7 @@ describe("LiteSOC SDK", () => {
       expect(body.timestamp).toBe("2024-01-01T00:00:00Z");
     });
 
-    it("should add severity to metadata", async () => {
+    it("should strip severity from payload (server-side assignment)", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
@@ -336,13 +380,16 @@ describe("LiteSOC SDK", () => {
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
+      // Pass severity in options - should be stripped
       await client.track("auth.login_failed", {
         actor: { id: "user-1" },
-        severity: "critical",
+        severity: "critical",  // This should be ignored
       });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.metadata._severity).toBe("critical");
+      // Severity should NOT be in metadata (server assigns it)
+      expect(body.metadata._severity).toBeUndefined();
+      expect(body.metadata._sdk).toBe("litesoc-node");
     });
 
     it("should handle errors silently in silent mode", async () => {
@@ -450,12 +497,13 @@ describe("LiteSOC SDK", () => {
 
   describe("Management API", () => {
     describe("getAlerts()", () => {
-      it("should fetch alerts with default params", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: [], total: 0, limit: 100, offset: 0 }),
-        });
+      it("should fetch alerts with default params and metadata", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: [], total: 0, limit: 100, offset: 0 },
+            { plan: "pro", retentionDays: 30 }
+          )
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.getAlerts();
@@ -464,15 +512,15 @@ describe("LiteSOC SDK", () => {
           "https://api.litesoc.io/v1/alerts",
           expect.objectContaining({ method: "GET" })
         );
-        expect(result).toEqual({ data: [], total: 0, limit: 100, offset: 0 });
+        expect(result.data).toEqual({ data: [], total: 0, limit: 100, offset: 0 });
+        expect(result.metadata.plan).toBe("pro");
+        expect(result.metadata.retentionDays).toBe(30);
       });
 
       it("should fetch alerts with filters", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: [], total: 0, limit: 10, offset: 0 }),
-        });
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({ data: [], total: 0, limit: 10, offset: 0 })
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         await client.getAlerts({ status: "open", severity: "critical", alertType: "brute_force_attack", limit: 10, offset: 5 });
@@ -511,12 +559,13 @@ describe("LiteSOC SDK", () => {
     });
 
     describe("getAlert()", () => {
-      it("should fetch single alert", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: { id: "alert-123", status: "open" } }),
-        });
+      it("should fetch single alert with metadata", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: { id: "alert-123", status: "open" } },
+            { plan: "pro", retentionDays: 30 }
+          )
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.getAlert("alert-123");
@@ -525,7 +574,9 @@ describe("LiteSOC SDK", () => {
           "https://api.litesoc.io/v1/alerts/alert-123",
           expect.objectContaining({ method: "GET" })
         );
-        expect(result.id).toBe("alert-123");
+        expect(result.data.id).toBe("alert-123");
+        expect(result.metadata.plan).toBe("pro");
+        expect(result.metadata.retentionDays).toBe(30);
       });
 
       it("should throw ValidationError when alertId is empty", async () => {
@@ -536,11 +587,12 @@ describe("LiteSOC SDK", () => {
 
     describe("resolveAlert()", () => {
       it("should PATCH to alert endpoint with notes", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: { id: "alert-123", status: "resolved" } }),
-        });
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: { id: "alert-123", status: "resolved" } },
+            { plan: "enterprise" }
+          )
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.resolveAlert("alert-123", "False positive");
@@ -553,15 +605,14 @@ describe("LiteSOC SDK", () => {
         expect(body.resolution_notes).toBe("False positive");
         expect(body.status).toBe("resolved");
         expect(body.resolution_type).toBe("resolved");
-        expect(result.status).toBe("resolved");
+        expect(result.data.status).toBe("resolved");
+        expect(result.metadata.plan).toBe("enterprise");
       });
 
       it("should resolve without notes", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: { id: "alert-123", status: "resolved" } }),
-        });
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({ data: { id: "alert-123", status: "resolved" } })
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         await client.resolveAlert("alert-123");
@@ -578,11 +629,12 @@ describe("LiteSOC SDK", () => {
 
     describe("markAlertSafe()", () => {
       it("should PATCH to alert endpoint with notes", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: { id: "alert-123", status: "dismissed" } }),
-        });
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: { id: "alert-123", status: "dismissed" } },
+            { plan: "pro" }
+          )
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.markAlertSafe("alert-123", "Known behavior");
@@ -595,15 +647,14 @@ describe("LiteSOC SDK", () => {
         expect(body.resolution_notes).toBe("Known behavior");
         expect(body.status).toBe("dismissed");
         expect(body.resolution_type).toBe("false_positive");
-        expect(result.status).toBe("dismissed");
+        expect(result.data.status).toBe("dismissed");
+        expect(result.metadata.plan).toBe("pro");
       });
 
       it("should mark safe without notes", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: { id: "alert-123", status: "dismissed" } }),
-        });
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({ data: { id: "alert-123", status: "dismissed" } })
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         await client.markAlertSafe("alert-123");
@@ -619,12 +670,13 @@ describe("LiteSOC SDK", () => {
     });
 
     describe("getEvents()", () => {
-      it("should fetch events with default params", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: [], total: 0, limit: 50, offset: 0 }),
-        });
+      it("should fetch events with default params and metadata", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: [], total: 0, limit: 50, offset: 0 },
+            { plan: "free", retentionDays: 7 }
+          )
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.getEvents();
@@ -633,15 +685,15 @@ describe("LiteSOC SDK", () => {
           "https://api.litesoc.io/v1/events",
           expect.objectContaining({ method: "GET" })
         );
-        expect(result).toEqual({ data: [], total: 0, limit: 50, offset: 0 });
+        expect(result.data).toEqual({ data: [], total: 0, limit: 50, offset: 0 });
+        expect(result.metadata.plan).toBe("free");
+        expect(result.metadata.retentionDays).toBe(7);
       });
 
       it("should fetch events with filters", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: [], total: 0, limit: 50, offset: 0 }),
-        });
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({ data: [], total: 0, limit: 50, offset: 0 })
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         await client.getEvents({ eventName: "auth.login_failed", actorId: "user-1", severity: "warning", limit: 10, offset: 5 });
@@ -658,12 +710,13 @@ describe("LiteSOC SDK", () => {
     });
 
     describe("getEvent()", () => {
-      it("should fetch single event", async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: async () => ({ data: { id: "evt-123", event_name: "auth.login_success" } }),
-        });
+      it("should fetch single event with metadata", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: { id: "evt-123", event_name: "auth.login_success" } },
+            { plan: "enterprise", retentionDays: 90 }
+          )
+        );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.getEvent("evt-123");
@@ -672,12 +725,90 @@ describe("LiteSOC SDK", () => {
           "https://api.litesoc.io/v1/events/evt-123",
           expect.objectContaining({ method: "GET" })
         );
-        expect(result.id).toBe("evt-123");
+        expect(result.data.id).toBe("evt-123");
+        expect(result.metadata.plan).toBe("enterprise");
+        expect(result.metadata.retentionDays).toBe(90);
       });
 
       it("should throw ValidationError when eventId is empty", async () => {
         const client = new LiteSOC({ apiKey: "test-api-key" });
         await expect(client.getEvent("")).rejects.toThrow(ValidationError);
+      });
+    });
+
+    describe("getPlanInfo()", () => {
+      it("should fetch plan info from events endpoint", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: [], total: 0, limit: 1, offset: 0 },
+            { plan: "pro", retentionDays: 30, cutoffDate: "2026-01-30T00:00:00Z" }
+          )
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getPlanInfo();
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          "https://api.litesoc.io/v1/events?limit=1",
+          expect.objectContaining({ method: "GET" })
+        );
+        expect(result.plan).toBe("pro");
+        expect(result.retentionDays).toBe(30);
+        expect(result.cutoffDate).toBe("2026-01-30T00:00:00Z");
+        expect(result.hasManagementApi).toBe(true);
+        expect(result.hasBehavioralAi).toBe(true);
+      });
+
+      it("should return correct features for free plan", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: [], total: 0, limit: 1, offset: 0 },
+            { plan: "free", retentionDays: 7 }
+          )
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getPlanInfo();
+
+        expect(result.plan).toBe("free");
+        expect(result.retentionDays).toBe(7);
+        expect(result.hasManagementApi).toBe(false);
+        expect(result.hasBehavioralAi).toBe(false);
+      });
+
+      it("should return correct features for enterprise plan", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { data: [], total: 0, limit: 1, offset: 0 },
+            { plan: "enterprise", retentionDays: 90 }
+          )
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getPlanInfo();
+
+        expect(result.plan).toBe("enterprise");
+        expect(result.retentionDays).toBe(90);
+        expect(result.hasManagementApi).toBe(true);
+        expect(result.hasBehavioralAi).toBe(true);
+      });
+
+      it("should handle missing plan headers gracefully", async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({ data: [], total: 0, limit: 1, offset: 0 }),
+        });
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getPlanInfo();
+
+        expect(result.plan).toBeNull();
+        expect(result.retentionDays).toBeNull();
+        expect(result.cutoffDate).toBeNull();
+        expect(result.hasManagementApi).toBe(false);
+        expect(result.hasBehavioralAi).toBe(false);
       });
     });
   });
@@ -687,6 +818,7 @@ describe("LiteSOC SDK", () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 401,
+        headers: { get: () => null },
         json: async () => ({ error: { message: "Invalid API key" } }),
       });
 
@@ -698,6 +830,7 @@ describe("LiteSOC SDK", () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
+        headers: { get: () => null },
         json: async () => ({ error: { message: "Alert not found" } }),
       });
 
@@ -825,7 +958,7 @@ describe("LiteSOC SDK", () => {
       expect(body.event).toBe("auth.login_success");
     });
 
-    it("trackPrivilegeEscalation should track admin.privilege_escalation with critical severity", async () => {
+    it("trackPrivilegeEscalation should track admin.privilege_escalation event", async () => {
       mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
@@ -833,7 +966,9 @@ describe("LiteSOC SDK", () => {
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.event).toBe("admin.privilege_escalation");
-      expect(body.metadata._severity).toBe("critical");
+      // Severity is assigned server-side, not included in payload
+      expect(body.metadata._severity).toBeUndefined();
+      expect(body.metadata._sdk).toBe("litesoc-node");
     });
 
     it("trackSensitiveAccess should track data.sensitive_access with resource", async () => {

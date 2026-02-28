@@ -16,7 +16,7 @@
 // ============================================
 
 /** SDK version */
-export const SDK_VERSION = "2.0.0";
+export const SDK_VERSION = "2.0.1";
 
 /** Default API base URL */
 export const DEFAULT_BASE_URL = "https://api.litesoc.io";
@@ -160,9 +160,30 @@ export interface TrackOptions {
   actor?: Actor | string;
   /** Actor's email address (shorthand for actor.email) */
   actorEmail?: string;
-  /** End-user's IP address (the user making the request) */
+  /**
+   * End-user's IP address (the user making the request)
+   *
+   * **⚠️ CRITICAL:** Providing the real end-user IP is **required** to enable:
+   * - **Behavioral AI:** Impossible Travel detection, Geo-Anomaly detection
+   * - **Forensic Maps:** Visual threat maps and location-based analysis
+   * - **Network Intelligence:** IP reputation, ASN, and threat scoring
+   *
+   * If omitted, these features will be **disabled** for this event, and
+   * the event will have `network_intelligence: null` and `geolocation: null`.
+   *
+   * @example
+   * ```typescript
+   * // Express.js: Get real client IP (behind proxy)
+   * const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+   *
+   * await litesoc.track('auth.login_success', {
+   *   actor: userId,
+   *   userIp: clientIp,  // Required for Behavioral AI
+   * });
+   * ```
+   */
   userIp?: string;
-  /** Event severity (optional, auto-detected for standard events) */
+  /** Event severity (ignored - severity is automatically assigned server-side) */
   severity?: EventSeverity;
   /** Additional metadata for the event */
   metadata?: EventMetadata;
@@ -264,6 +285,58 @@ export interface PaginatedResponse<T> {
   total: number;
   limit: number;
   offset: number;
+}
+
+/**
+ * Plan metadata extracted from API response headers
+ *
+ * These headers are returned with every API response and provide
+ * information about your current plan's capabilities and limits.
+ */
+export interface ResponseMetadata {
+  /**
+   * Your current LiteSOC plan tier
+   * - free: Basic plan with limited features
+   * - pro: Professional plan with full Management API access
+   * - enterprise: Enterprise plan with extended retention and support
+   */
+  plan: "free" | "pro" | "enterprise" | null;
+
+  /**
+   * Event retention period in days for your plan
+   * - free: 7 days
+   * - pro: 30 days
+   * - enterprise: 90 days
+   */
+  retentionDays: number | null;
+
+  /**
+   * The oldest date for which events are available (ISO 8601 format)
+   * Events older than this date have been purged per your plan's retention policy
+   */
+  cutoffDate: string | null;
+}
+
+/**
+ * API response wrapper that includes both data and plan metadata
+ */
+export interface ApiResponse<T> {
+  /** The response data */
+  data: T;
+
+  /** Plan metadata extracted from response headers */
+  metadata: ResponseMetadata;
+}
+
+/**
+ * Plan information returned by getPlanInfo()
+ */
+export interface PlanInfo extends ResponseMetadata {
+  /** Whether the current plan has access to the Management API (alerts) */
+  hasManagementApi: boolean;
+
+  /** Whether the current plan has access to Behavioral AI features */
+  hasBehavioralAi: boolean;
 }
 
 /**
@@ -470,6 +543,19 @@ export class LiteSOC {
    * @remarks
    * **Plan availability:** Free, Pro, Enterprise
    *
+   * **⚠️ IMPORTANT: userIp is CRITICAL for Behavioral AI**
+   *
+   * Always provide the real end-user IP address to enable:
+   * - Impossible Travel detection
+   * - Geo-Anomaly detection
+   * - Forensic Maps and threat visualization
+   *
+   * Without `userIp`, these features will be disabled for the event.
+   *
+   * **Note on severity:** Event severity is automatically assigned server-side
+   * by LiteSOC based on threat intelligence. Any `severity` value provided
+   * in options will be ignored to prevent tampering.
+   *
    * **Standard events (26):**
    * - Auth: login_success, login_failed, logout, password_reset, mfa_enabled, mfa_disabled, session_expired, token_refreshed
    * - Authz: access_denied, role_changed, permission_granted, permission_revoked
@@ -479,18 +565,18 @@ export class LiteSOC {
    *
    * @example
    * ```typescript
-   * // Track with full options
+   * // Track with full options (always include userIp!)
    * await litesoc.track('auth.login_failed', {
    *   actor: { id: 'user_123', email: 'user@example.com' },
-   *   userIp: '192.168.1.1',
-   *   severity: 'warning',
+   *   userIp: req.headers['x-forwarded-for']?.split(',')[0] || req.ip,
    *   metadata: { reason: 'invalid_password', attempts: 3 }
    * });
    *
    * // Track with shorthand actor
    * await litesoc.track('admin.user_created', {
    *   actor: 'admin_456',
-   *   actorEmail: 'admin@example.com'
+   *   actorEmail: 'admin@example.com',
+   *   userIp: clientIp  // Required for Behavioral AI
    * });
    * ```
    */
@@ -512,6 +598,8 @@ export class LiteSOC {
       }
 
       // Build the event
+      // NOTE: Severity is intentionally NOT included in the payload.
+      // Severity is automatically assigned server-side by LiteSOC to prevent tampering.
       const event: QueuedEvent = {
         event: eventName,
         actor,
@@ -520,7 +608,7 @@ export class LiteSOC {
           ...options.metadata,
           _sdk: "litesoc-node",
           _sdk_version: SDK_VERSION,
-          ...(options.severity ? { _severity: options.severity } : {}),
+          // Severity stripped - server assigns this automatically
         },
         timestamp:
           options.timestamp instanceof Date
@@ -603,12 +691,17 @@ export class LiteSOC {
    * Alerts are automatically generated when suspicious patterns are detected.
    *
    * @param options - Filter and pagination options
-   * @returns Promise resolving to paginated alert data
+   * @returns Promise resolving to paginated alert data with plan metadata
    *
    * @remarks
    * **Plan availability:** Pro, Enterprise only
    *
    * Free plan users will receive a `PlanRestrictedError`.
+   *
+   * The response includes `metadata` with your plan details:
+   * - `plan`: Your current plan tier (free/pro/enterprise)
+   * - `retentionDays`: How long events are retained
+   * - `cutoffDate`: Oldest queryable date
    *
    * @throws {PlanRestrictedError} When called with a Free plan API key
    * @throws {AuthenticationError} When the API key is invalid
@@ -616,20 +709,21 @@ export class LiteSOC {
    *
    * @example
    * ```typescript
-   * // Get all open critical alerts
-   * const { data: alerts, total } = await litesoc.getAlerts({
+   * // Get all open critical alerts with plan metadata
+   * const { data, metadata } = await litesoc.getAlerts({
    *   status: 'open',
    *   severity: 'critical',
    *   limit: 50
    * });
    *
-   * console.log(`Found ${total} critical alerts`);
-   * for (const alert of alerts) {
+   * console.log(`Plan: ${metadata.plan}, Retention: ${metadata.retentionDays} days`);
+   * console.log(`Found ${data.total} critical alerts`);
+   * for (const alert of data.data) {
    *   console.log(`${alert.title} - ${alert.alert_type}`);
    * }
    * ```
    */
-  async getAlerts(options: GetAlertsOptions = {}): Promise<PaginatedResponse<Alert>> {
+  async getAlerts(options: GetAlertsOptions = {}): Promise<ApiResponse<PaginatedResponse<Alert>>> {
     const params = new URLSearchParams();
 
     if (options.status) params.append("status", options.status);
@@ -649,7 +743,7 @@ export class LiteSOC {
    * Get a single alert by ID
    *
    * @param alertId - The unique alert ID
-   * @returns Promise resolving to the alert
+   * @returns Promise resolving to the alert with plan metadata
    *
    * @remarks
    * **Plan availability:** Pro, Enterprise only
@@ -660,18 +754,19 @@ export class LiteSOC {
    *
    * @example
    * ```typescript
-   * const alert = await litesoc.getAlert('alert_abc123');
+   * const { data: alert, metadata } = await litesoc.getAlert('alert_abc123');
    * console.log(`Alert: ${alert.title} (${alert.status})`);
+   * console.log(`Plan: ${metadata.plan}`);
    * ```
    */
-  async getAlert(alertId: string): Promise<Alert> {
+  async getAlert(alertId: string): Promise<ApiResponse<Alert>> {
     if (!alertId) {
       throw new ValidationError("alertId is required");
     }
 
     const url = `${this.baseUrl}/v1/alerts/${alertId}`;
     const response = await this.makeRequest<{ data: Alert }>("GET", url);
-    return response.data;
+    return { data: response.data.data, metadata: response.metadata };
   }
 
   /**
@@ -682,7 +777,7 @@ export class LiteSOC {
    *
    * @param alertId - The unique alert ID to resolve
    * @param notes - Optional resolution notes explaining how the alert was resolved
-   * @returns Promise resolving to the updated alert
+   * @returns Promise resolving to the updated alert with plan metadata
    *
    * @remarks
    * **Plan availability:** Pro, Enterprise only
@@ -693,14 +788,14 @@ export class LiteSOC {
    *
    * @example
    * ```typescript
-   * const alert = await litesoc.resolveAlert(
+   * const { data: alert } = await litesoc.resolveAlert(
    *   'alert_abc123',
    *   'Verified as authorized access by admin team'
    * );
    * console.log(`Alert resolved at: ${alert.resolved_at}`);
    * ```
    */
-  async resolveAlert(alertId: string, notes?: string): Promise<Alert> {
+  async resolveAlert(alertId: string, notes?: string): Promise<ApiResponse<Alert>> {
     if (!alertId) {
       throw new ValidationError("alertId is required");
     }
@@ -715,7 +810,7 @@ export class LiteSOC {
     }
 
     const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);
-    return response.data;
+    return { data: response.data.data, metadata: response.metadata };
   }
 
   /**
@@ -725,7 +820,7 @@ export class LiteSOC {
    *
    * @param alertId - The unique alert ID to mark as safe
    * @param notes - Optional notes explaining why this is a false positive
-   * @returns Promise resolving to the updated alert
+   * @returns Promise resolving to the updated alert with plan metadata
    *
    * @remarks
    * **Plan availability:** Pro, Enterprise only
@@ -736,13 +831,13 @@ export class LiteSOC {
    *
    * @example
    * ```typescript
-   * const alert = await litesoc.markAlertSafe(
+   * const { data: alert } = await litesoc.markAlertSafe(
    *   'alert_abc123',
    *   'User was traveling for business, confirmed via HR'
    * );
    * ```
    */
-  async markAlertSafe(alertId: string, notes?: string): Promise<Alert> {
+  async markAlertSafe(alertId: string, notes?: string): Promise<ApiResponse<Alert>> {
     if (!alertId) {
       throw new ValidationError("alertId is required");
     }
@@ -757,7 +852,7 @@ export class LiteSOC {
     }
 
     const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);
-    return response.data;
+    return { data: response.data.data, metadata: response.metadata };
   }
 
   /**
@@ -767,7 +862,7 @@ export class LiteSOC {
    * Use this to query historical events for investigation or reporting.
    *
    * @param options - Filter and pagination options
-   * @returns Promise resolving to paginated event data
+   * @returns Promise resolving to paginated event data with plan metadata
    *
    * @remarks
    * **Plan availability:** Free (limited), Pro, Enterprise
@@ -776,24 +871,30 @@ export class LiteSOC {
    * - Pro plan: 30-day retention, max 100 events per request
    * - Enterprise plan: 90-day retention, max 100 events per request
    *
+   * The response includes `metadata` with your plan details:
+   * - `plan`: Your current plan tier (free/pro/enterprise)
+   * - `retentionDays`: How long events are retained
+   * - `cutoffDate`: Oldest queryable date
+   *
    * @throws {AuthenticationError} When the API key is invalid
    * @throws {RateLimitError} When rate limit is exceeded
    *
    * @example
    * ```typescript
-   * // Get recent failed logins
-   * const { data: events } = await litesoc.getEvents({
+   * // Get recent failed logins with plan metadata
+   * const { data, metadata } = await litesoc.getEvents({
    *   eventName: 'auth.login_failed',
    *   severity: 'warning',
    *   limit: 50
    * });
    *
-   * for (const event of events) {
+   * console.log(`Plan: ${metadata.plan}, Retention: ${metadata.retentionDays} days`);
+   * for (const event of data.data) {
    *   console.log(`${event.event_name} from ${event.user_ip} at ${event.created_at}`);
    * }
    * ```
    */
-  async getEvents(options: GetEventsOptions = {}): Promise<PaginatedResponse<Event>> {
+  async getEvents(options: GetEventsOptions = {}): Promise<ApiResponse<PaginatedResponse<Event>>> {
     const params = new URLSearchParams();
 
     if (options.eventName) params.append("event_name", options.eventName);
@@ -813,7 +914,7 @@ export class LiteSOC {
    * Get a single event by ID
    *
    * @param eventId - The unique event ID
-   * @returns Promise resolving to the event
+   * @returns Promise resolving to the event with plan metadata
    *
    * @remarks
    * **Plan availability:** Free (within retention), Pro, Enterprise
@@ -823,18 +924,19 @@ export class LiteSOC {
    *
    * @example
    * ```typescript
-   * const event = await litesoc.getEvent('evt_abc123');
+   * const { data: event, metadata } = await litesoc.getEvent('evt_abc123');
    * console.log(`Event: ${event.event_name} by ${event.actor_id}`);
+   * console.log(`Plan: ${metadata.plan}`);
    * ```
    */
-  async getEvent(eventId: string): Promise<Event> {
+  async getEvent(eventId: string): Promise<ApiResponse<Event>> {
     if (!eventId) {
       throw new ValidationError("eventId is required");
     }
 
     const url = `${this.baseUrl}/v1/events/${eventId}`;
     const response = await this.makeRequest<{ data: Event }>("GET", url);
-    return response.data;
+    return { data: response.data.data, metadata: response.metadata };
   }
 
   // ============================================
@@ -870,6 +972,59 @@ export class LiteSOC {
     this.log("Shutting down...");
     await this.flush(); // flush() already clears the flushTimer
     this.log("Shutdown complete");
+  }
+
+  /**
+   * Get your current LiteSOC plan information
+   *
+   * Makes a lightweight API call to retrieve your plan tier, retention limits,
+   * and feature availability. Useful for programmatically checking capabilities.
+   *
+   * @returns Promise resolving to your plan information
+   *
+   * @remarks
+   * **Plan availability:** Free, Pro, Enterprise
+   *
+   * This method makes a minimal API call (fetching 1 event) to retrieve
+   * the plan metadata from response headers.
+   *
+   * @throws {AuthenticationError} When the API key is invalid
+   *
+   * @example
+   * ```typescript
+   * const plan = await litesoc.getPlanInfo();
+   *
+   * console.log(`Current plan: ${plan.plan}`);
+   * console.log(`Retention: ${plan.retentionDays} days`);
+   * console.log(`Oldest data: ${plan.cutoffDate}`);
+   *
+   * if (plan.hasManagementApi) {
+   *   // Can use getAlerts, resolveAlert, etc.
+   *   const alerts = await litesoc.getAlerts();
+   * }
+   *
+   * if (plan.hasBehavioralAi) {
+   *   // Behavioral AI features available
+   *   console.log('Impossible travel detection enabled');
+   * }
+   * ```
+   */
+  async getPlanInfo(): Promise<PlanInfo> {
+    // Make a minimal request to retrieve plan headers
+    const url = `${this.baseUrl}/v1/events?limit=1`;
+    const response = await this.makeRequest<PaginatedResponse<Event>>("GET", url);
+
+    const { plan, retentionDays, cutoffDate } = response.metadata;
+
+    return {
+      plan,
+      retentionDays,
+      cutoffDate,
+      // Pro and Enterprise plans have Management API access (alerts)
+      hasManagementApi: plan === "pro" || plan === "enterprise",
+      // Pro and Enterprise plans have Behavioral AI features
+      hasBehavioralAi: plan === "pro" || plan === "enterprise",
+    };
   }
 
   // ============================================
@@ -910,6 +1065,8 @@ export class LiteSOC {
    * Track a privilege escalation event
    *
    * @remarks **Plan availability:** Free, Pro, Enterprise
+   *
+   * Note: Severity is automatically assigned server-side by LiteSOC.
    */
   async trackPrivilegeEscalation(
     actorId: string,
@@ -917,7 +1074,7 @@ export class LiteSOC {
   ): Promise<void> {
     return this.track("admin.privilege_escalation", {
       actor: actorId,
-      severity: "critical",
+      // Note: Severity is assigned server-side, not passed from client
       ...options,
     });
   }
@@ -1022,13 +1179,13 @@ export class LiteSOC {
 
   /**
    * Make a request to the Management API
-   * Handles authentication, errors, and response parsing
+   * Handles authentication, errors, response parsing, and plan metadata extraction
    */
   private async makeRequest<T>(
     method: "GET" | "POST" | "PATCH" | "DELETE",
     url: string,
     body?: Record<string, unknown>
-  ): Promise<T> {
+  ): Promise<{ data: T; metadata: ResponseMetadata }> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -1058,8 +1215,11 @@ export class LiteSOC {
         await this.handleApiError(response);
       }
 
+      // Extract plan metadata from response headers
+      const metadata = this.extractPlanMetadata(response);
+
       const data = await response.json();
-      return data as T;
+      return { data: data as T, metadata };
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -1130,6 +1290,39 @@ export class LiteSOC {
           errorCode
         );
     }
+  }
+
+  /**
+   * Extract plan metadata from API response headers
+   *
+   * @param response - The fetch Response object
+   * @returns Plan metadata extracted from X-LiteSOC-* headers
+   */
+  private extractPlanMetadata(response: Response): ResponseMetadata {
+    const planHeader = response.headers.get("X-LiteSOC-Plan");
+    const retentionHeader = response.headers.get("X-LiteSOC-Retention");
+    const cutoffHeader = response.headers.get("X-LiteSOC-Cutoff");
+
+    // Parse plan tier
+    let plan: ResponseMetadata["plan"] = null;
+    if (planHeader === "free" || planHeader === "pro" || planHeader === "enterprise") {
+      plan = planHeader;
+    }
+
+    // Parse retention days
+    let retentionDays: number | null = null;
+    if (retentionHeader) {
+      const parsed = parseInt(retentionHeader, 10);
+      if (!isNaN(parsed)) {
+        retentionDays = parsed;
+      }
+    }
+
+    return {
+      plan,
+      retentionDays,
+      cutoffDate: cutoffHeader || null,
+    };
   }
 
   /**

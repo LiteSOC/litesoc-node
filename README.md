@@ -75,6 +75,134 @@ Events are auto-classified by severity:
 
 > **Important**: Always include `userIp` for full security intelligence features.
 
+## Plan Awareness
+
+The SDK is fully plan-aware and provides visibility into your LiteSOC subscription tier, retention limits, and feature availability.
+
+### Checking Your Plan
+
+```typescript
+// Get your current plan information
+const plan = await litesoc.getPlanInfo();
+
+console.log(`Plan: ${plan.plan}`);           // 'free', 'pro', or 'enterprise'
+console.log(`Retention: ${plan.retentionDays} days`);
+console.log(`Oldest data: ${plan.cutoffDate}`);
+
+// Check feature availability
+if (plan.hasManagementApi) {
+  // Pro/Enterprise: Can use getAlerts, resolveAlert, etc.
+  const { data: alerts } = await litesoc.getAlerts({ status: 'open' });
+}
+
+if (plan.hasBehavioralAi) {
+  // Pro/Enterprise: Impossible Travel, Geo-Anomaly detection enabled
+  console.log('Behavioral AI features available');
+}
+```
+
+### Plan Tiers
+
+| Feature | Free | Pro | Enterprise |
+|---------|------|-----|------------|
+| Event Ingestion | ✅ | ✅ | ✅ |
+| Retention | 7 days | 30 days | 90 days |
+| Management API | ❌ | ✅ | ✅ |
+| Behavioral AI | ❌ | ✅ | ✅ |
+| Alerts | ❌ | ✅ | ✅ |
+| Priority Support | ❌ | ❌ | ✅ |
+
+### Response Metadata
+
+All Management API methods return plan metadata in the response:
+
+```typescript
+const { data, metadata } = await litesoc.getAlerts({ status: 'open' });
+
+console.log(`Plan: ${metadata.plan}`);
+console.log(`Retention: ${metadata.retentionDays} days`);
+console.log(`Cutoff: ${metadata.cutoffDate}`);
+
+// Access the actual alerts
+for (const alert of data.data) {
+  console.log(`${alert.title} - ${alert.severity}`);
+}
+```
+
+### Plan-Restricted Features
+
+Calling Management API methods on the Free plan will throw a `PlanRestrictedError`:
+
+```typescript
+import { LiteSOC, PlanRestrictedError } from 'litesoc';
+
+const litesoc = new LiteSOC({ apiKey: 'free-plan-key' });
+
+try {
+  await litesoc.getAlerts();
+} catch (error) {
+  if (error instanceof PlanRestrictedError) {
+    console.log(error.message);
+    // "This feature requires a Pro or Enterprise plan. 
+    //  Upgrade at https://www.litesoc.io/pricing"
+  }
+}
+```
+
+## Critical: The `userIp` Parameter
+
+> ⚠️ **CRITICAL**: Always provide the real end-user IP address!
+
+The `userIp` parameter is **required** for LiteSOC's most powerful features:
+
+### What `userIp` Enables
+
+| Feature | Without `userIp` | With `userIp` |
+|---------|------------------|---------------|
+| **Impossible Travel** | ❌ Disabled | ✅ Detects logins from impossible locations |
+| **Geo-Anomaly** | ❌ Disabled | ✅ Detects unusual geographic patterns |
+| **Forensic Maps** | ❌ No location | ✅ Visual threat maps |
+| **Network Intelligence** | ❌ No data | ✅ VPN/Tor/Proxy detection |
+| **IP Reputation** | ❌ No scoring | ✅ Threat scoring |
+
+### How to Get the Real IP
+
+```typescript
+// Express.js
+app.use((req, res, next) => {
+  // Get real IP behind proxy/load balancer
+  const userIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() 
+              || req.headers['x-real-ip'] 
+              || req.ip;
+  
+  await litesoc.track('auth.login_success', {
+    actor: userId,
+    userIp,  // ← Required for Behavioral AI
+  });
+});
+
+// Next.js API Route
+import { headers } from 'next/headers';
+
+const headersList = headers();
+const userIp = headersList.get('x-forwarded-for')?.split(',')[0] 
+            || headersList.get('x-real-ip') 
+            || 'unknown';
+
+// Cloudflare Workers / Vercel Edge
+const userIp = request.headers.get('cf-connecting-ip') 
+            || request.headers.get('x-real-ip')
+            || 'unknown';
+```
+
+### What Happens Without `userIp`
+
+Events tracked without `userIp` will:
+- Have `network_intelligence: null`
+- Have `geolocation: null`
+- Not trigger Impossible Travel or Geo-Anomaly alerts
+- Not appear on Forensic Maps
+
 ## Configuration
 
 ```typescript
@@ -393,6 +521,15 @@ import {
   Actor,
   AuthEvent,
   SecurityEvent,
+  // Plan awareness types
+  ResponseMetadata,
+  ApiResponse,
+  PlanInfo,
+  // Error classes
+  LiteSOCError,
+  PlanRestrictedError,
+  AuthenticationError,
+  RateLimitError,
   // ... and more
 } from 'litesoc';
 
