@@ -79,11 +79,11 @@ describe("LiteSOC SDK", () => {
 
   describe("Constants", () => {
     it("should export SDK_VERSION", () => {
-      expect(SDK_VERSION).toBe("2.1.0");
+      expect(SDK_VERSION).toBe("2.2.0");
     });
 
     it("should export USER_AGENT", () => {
-      expect(USER_AGENT).toBe("litesoc-node-sdk/2.1.0");
+      expect(USER_AGENT).toBe("litesoc-node-sdk/2.2.0");
     });
 
     it("should export DEFAULT_BASE_URL", () => {
@@ -252,7 +252,7 @@ describe("LiteSOC SDK", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             "X-API-Key": "test-api-key",
-            "User-Agent": "litesoc-node-sdk/2.1.0",
+            "User-Agent": "litesoc-node-sdk/2.2.0",
           }),
         })
       );
