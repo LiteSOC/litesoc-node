@@ -5,6 +5,20 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-03-02
+
+### Changed
+
+#### Management API - Breaking Changes
+- **`resolveAlert(alertId, resolutionType, notes?)`** - Now requires `resolutionType` parameter
+  - `resolutionType` must be one of: `'blocked_ip'`, `'reset_password'`, `'contacted_user'`, `'false_positive'`, `'other'`
+  - API body now sends `{ action: 'resolve', resolution_type, internal_notes }` to match API spec
+- **`markAlertSafe(alertId, notes?)`** - API body now sends `{ action: 'mark_safe', internal_notes }` to match API spec
+
+### Fixed
+- Aligned SDK methods with API codebase requirements for PATCH /alerts/:id endpoint
+- Updated test suite to cover new method signatures (120 tests, 100% coverage)
+
 ## [2.1.0] - 2026-03-01
 
 ### Added

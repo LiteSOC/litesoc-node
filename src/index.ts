@@ -16,7 +16,7 @@
 // ============================================
 
 /** SDK version */
-export const SDK_VERSION = "2.1.0";
+export const SDK_VERSION = "2.2.0";
 
 /** Default API base URL */
 export const DEFAULT_BASE_URL = "https://api.litesoc.io";
@@ -852,23 +852,28 @@ export class LiteSOC {
    * ```typescript
    * const { data: alert } = await litesoc.resolveAlert(
    *   'alert_abc123',
+   *   'blocked_ip',
    *   'Verified as authorized access by admin team'
    * );
    * console.log(`Alert resolved at: ${alert.resolved_at}`);
    * ```
    */
-  async resolveAlert(alertId: string, notes?: string): Promise<ApiResponse<Alert>> {
+  async resolveAlert(
+    alertId: string,
+    resolutionType: "blocked_ip" | "reset_password" | "contacted_user" | "false_positive" | "other" = "other",
+    notes?: string
+  ): Promise<ApiResponse<Alert>> {
     if (!alertId) {
       throw new ValidationError("alertId is required");
     }
 
     const url = `${this.baseUrl}/alerts/${alertId}`;
     const body: Record<string, string> = {
-      status: "resolved",
-      resolution_type: "resolved",
+      action: "resolve",
+      resolution_type: resolutionType,
     };
     if (notes) {
-      body.resolution_notes = notes;
+      body.internal_notes = notes;
     }
 
     const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);
@@ -906,11 +911,10 @@ export class LiteSOC {
 
     const url = `${this.baseUrl}/alerts/${alertId}`;
     const body: Record<string, string> = {
-      status: "dismissed",
-      resolution_type: "false_positive",
+      action: "mark_safe",
     };
     if (notes) {
-      body.resolution_notes = notes;
+      body.internal_notes = notes;
     }
 
     const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);

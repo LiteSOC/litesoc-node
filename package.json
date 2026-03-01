@@ -1,6 +1,6 @@
 {
   "name": "litesoc",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Official Node.js/TypeScript SDK for LiteSOC - Security event tracking, threat detection, and Management API",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
