@@ -5,6 +5,23 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-03-02
+
+### Fixed
+- **Alert Interface** - Aligned with actual API response structure:
+  - Removed `trigger_event_id` field (not returned by API)
+  - Removed `forensics` field (not a top-level field in API response)
+  - Removed `resolution_notes` field (stored in `metadata.internal_notes` instead)
+  - Removed unused `NetworkForensics`, `LocationForensics`, and `Forensics` interfaces
+
+### Changed
+- **`Alert.metadata`** - Updated documentation to clarify that `internal_notes` from resolve/markSafe actions are stored here
+- **Version** - Updated to 2.3.1
+
+### Notes
+- This is a **type-only breaking change** for TypeScript users who were accessing the removed fields
+- The removed fields were never populated by the API, so runtime behavior is unchanged
+
 ## [2.3.0] - 2026-03-02
 
 ### Added

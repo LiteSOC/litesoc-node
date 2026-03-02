@@ -1,5 +1,5 @@
 /**
- * LiteSOC Node.js/TypeScript SDK v2.3.0
+ * LiteSOC Node.js/TypeScript SDK v2.3.1
  * Official SDK for security event tracking and threat detection
  *
  * Features:
@@ -16,7 +16,7 @@
 // ============================================
 
 /** SDK version */
-export const SDK_VERSION = "2.3.0";
+export const SDK_VERSION = "2.3.1";
 
 /** Default API base URL */
 export const DEFAULT_BASE_URL = "https://api.litesoc.io";
@@ -225,61 +225,6 @@ interface IngestApiResponse {
 }
 
 /**
- * Network forensics information (Pro/Enterprise plans only)
- * Returns null for Free tier users
- */
-export interface NetworkForensics {
-  /** Whether the IP is from a VPN provider */
-  is_vpn: boolean;
-  /** Whether the IP is a Tor exit node */
-  is_tor: boolean;
-  /** Whether the IP is from a proxy server */
-  is_proxy: boolean;
-  /** Whether the IP is from a datacenter/cloud provider */
-  is_datacenter: boolean;
-  /** Whether the IP is from a mobile carrier */
-  is_mobile: boolean;
-  /** Autonomous System Number */
-  asn: number | null;
-  /** Autonomous System Organization name */
-  asn_org: string | null;
-  /** Internet Service Provider name */
-  isp: string | null;
-}
-
-/**
- * Location forensics information (Pro/Enterprise plans only)
- * Returns null for Free tier users
- */
-export interface LocationForensics {
-  /** City name */
-  city: string | null;
-  /** Region/state name */
-  region: string | null;
-  /** ISO 3166-1 alpha-2 country code (e.g., "US", "GB") */
-  country_code: string | null;
-  /** Full country name */
-  country_name: string | null;
-  /** Latitude coordinate */
-  latitude: number | null;
-  /** Longitude coordinate */
-  longitude: number | null;
-  /** Timezone (e.g., "America/New_York") */
-  timezone: string | null;
-}
-
-/**
- * Forensics data attached to alerts (Pro/Enterprise plans only)
- * Returns null for Free tier users
- */
-export interface Forensics {
-  /** Network intelligence data */
-  network: NetworkForensics;
-  /** Location/GeoIP data */
-  location: LocationForensics;
-}
-
-/**
  * Alert object returned from the Management API
  */
 export interface Alert {
@@ -291,19 +236,15 @@ export interface Alert {
   description: string | null;
   source_ip: string | null;
   actor_id: string | null;
-  /** The event ID that triggered this alert */
-  trigger_event_id: string | null;
-  /**
-   * Forensics data (network intelligence + location)
-   * Only available on Pro/Enterprise plans. Returns null for Free tier.
-   */
-  forensics: Forensics | null;
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
   /** User ID or identifier who resolved the alert */
   resolved_by: string | null;
-  resolution_notes: string | null;
+  /**
+   * Additional metadata including internal_notes, resolution details, etc.
+   * Note: internal_notes from resolve/markSafe actions are stored here.
+   */
   metadata: Record<string, unknown>;
 }
 

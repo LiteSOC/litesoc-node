@@ -79,11 +79,11 @@ describe("LiteSOC SDK", () => {
 
   describe("Constants", () => {
     it("should export SDK_VERSION", () => {
-      expect(SDK_VERSION).toBe("2.3.0");
+      expect(SDK_VERSION).toBe("2.3.1");
     });
 
     it("should export USER_AGENT", () => {
-      expect(USER_AGENT).toBe("litesoc-node-sdk/2.3.0");
+      expect(USER_AGENT).toBe("litesoc-node-sdk/2.3.1");
     });
 
     it("should export DEFAULT_BASE_URL", () => {
@@ -255,7 +255,7 @@ describe("LiteSOC SDK", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             "X-API-Key": "test-api-key",
-            "User-Agent": "litesoc-node-sdk/2.3.0",
+            "User-Agent": "litesoc-node-sdk/2.3.1",
           }),
         })
       );
@@ -630,62 +630,40 @@ describe("LiteSOC SDK", () => {
         await expect(client.getAlert("")).rejects.toThrow(ValidationError);
       });
 
-      it("should handle alert with trigger_event_id and forensics", async () => {
-        const alertWithForensics = {
+      it("should handle alert with metadata containing internal_notes", async () => {
+        const alertWithMetadata = {
           id: "alert-456",
           alert_type: "brute_force_attack",
           severity: "high",
-          status: "open",
+          status: "resolved",
           title: "Brute Force Attack Detected",
           description: "Multiple failed login attempts",
           source_ip: "192.168.1.100",
           actor_id: "user_123",
-          trigger_event_id: "evt_abc123",
-          forensics: {
-            network: {
-              is_vpn: true,
-              is_tor: false,
-              is_proxy: false,
-              is_datacenter: true,
-              is_mobile: false,
-              asn: 12345,
-              asn_org: "Example Hosting Inc",
-              isp: "Example ISP",
-            },
-            location: {
-              city: "New York",
-              region: "New York",
-              country_code: "US",
-              country_name: "United States",
-              latitude: 40.7128,
-              longitude: -74.006,
-              timezone: "America/New_York",
-            },
-          },
           created_at: "2026-03-01T12:00:00Z",
-          updated_at: "2026-03-01T12:00:00Z",
-          resolved_at: null,
-          resolution_notes: null,
-          metadata: {},
+          updated_at: "2026-03-01T14:00:00Z",
+          resolved_at: "2026-03-01T14:00:00Z",
+          resolved_by: "admin@example.com",
+          metadata: {
+            internal_notes: "Verified as legitimate user",
+            resolution_type: "false_positive",
+          },
         };
 
         mockFetch.mockResolvedValueOnce(
-          createMockResponse({ data: alertWithForensics }, { plan: "enterprise" })
+          createMockResponse({ data: alertWithMetadata }, { plan: "enterprise" })
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.getAlert("alert-456");
 
-        expect(result.data.trigger_event_id).toBe("evt_abc123");
-        expect(result.data.forensics).toBeDefined();
-        expect(result.data.forensics!.network.is_vpn).toBe(true);
-        expect(result.data.forensics!.network.asn).toBe(12345);
-        expect(result.data.forensics!.location.city).toBe("New York");
-        expect(result.data.forensics!.location.country_code).toBe("US");
+        expect(result.data.metadata.internal_notes).toBe("Verified as legitimate user");
+        expect(result.data.metadata.resolution_type).toBe("false_positive");
+        expect(result.data.resolved_by).toBe("admin@example.com");
       });
 
-      it("should handle alert with null forensics (Free tier)", async () => {
-        const alertWithoutForensics = {
+      it("should handle alert with empty metadata", async () => {
+        const alertWithEmptyMetadata = {
           id: "alert-789",
           alert_type: "geo_anomaly",
           severity: "medium",
@@ -694,30 +672,26 @@ describe("LiteSOC SDK", () => {
           description: null,
           source_ip: "10.0.0.1",
           actor_id: "user_456",
-          trigger_event_id: "evt_xyz789",
-          forensics: null,
           created_at: "2026-03-01T12:00:00Z",
           updated_at: "2026-03-01T12:00:00Z",
           resolved_at: null,
-          resolution_notes: null,
+          resolved_by: null,
           metadata: {},
         };
 
         mockFetch.mockResolvedValueOnce(
-          createMockResponse({ data: alertWithoutForensics }, { plan: "free" })
+          createMockResponse({ data: alertWithEmptyMetadata }, { plan: "free" })
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.getAlert("alert-789");
 
-        expect(result.data.trigger_event_id).toBe("evt_xyz789");
-        expect(result.data.forensics).toBeNull();
-        // Accessing forensics properties should not throw when null
-        expect(result.data.forensics?.network?.is_vpn).toBeUndefined();
+        expect(result.data.metadata).toEqual({});
+        expect(result.data.resolved_at).toBeNull();
       });
 
-      it("should handle alert with null trigger_event_id", async () => {
-        const alertWithNullTrigger = {
+      it("should handle alert with null fields", async () => {
+        const alertWithNullFields = {
           id: "alert-999",
           alert_type: "suspicious_activity",
           severity: "low",
@@ -726,24 +700,23 @@ describe("LiteSOC SDK", () => {
           description: null,
           source_ip: null,
           actor_id: null,
-          trigger_event_id: null,
-          forensics: null,
           created_at: "2026-03-01T12:00:00Z",
           updated_at: "2026-03-01T12:00:00Z",
           resolved_at: null,
-          resolution_notes: null,
+          resolved_by: null,
           metadata: {},
         };
 
         mockFetch.mockResolvedValueOnce(
-          createMockResponse({ data: alertWithNullTrigger }, { plan: "free" })
+          createMockResponse({ data: alertWithNullFields }, { plan: "free" })
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
         const result = await client.getAlert("alert-999");
 
-        expect(result.data.trigger_event_id).toBeNull();
-        expect(result.data.forensics).toBeNull();
+        expect(result.data.source_ip).toBeNull();
+        expect(result.data.actor_id).toBeNull();
+        expect(result.data.resolved_by).toBeNull();
       });
     });
 
