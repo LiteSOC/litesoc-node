@@ -1,5 +1,5 @@
 /**
- * LiteSOC Node.js/TypeScript SDK v2.3.1
+ * LiteSOC Node.js/TypeScript SDK v2.4.0
  * Official SDK for security event tracking and threat detection
  *
  * Features:
@@ -16,7 +16,7 @@
 // ============================================
 
 /** SDK version */
-export const SDK_VERSION = "2.3.1";
+export const SDK_VERSION = "2.4.0";
 
 /** Default API base URL */
 export const DEFAULT_BASE_URL = "https://api.litesoc.io";

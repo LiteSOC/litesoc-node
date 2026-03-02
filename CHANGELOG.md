@@ -5,6 +5,20 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-03-02
+
+### Changed
+- **GetAlertsOptions** - Use snake_case for API parameter names:
+  - `alertType` → `alert_type`
+- **GetEventsOptions** - Use snake_case for API parameter names:
+  - `eventName` → `event_name`
+  - `actorId` → `actor_id`
+
+### Notes
+- This is a **breaking change** for TypeScript users using the camelCase property names
+- The SDK now uses snake_case property names that match the actual API query parameters
+- This change ensures consistency across all LiteSOC SDKs (Node, Python, PHP)
+
 ## [2.3.1] - 2026-03-02
 
 ### Fixed
