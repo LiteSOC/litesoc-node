@@ -569,7 +569,7 @@ describe("LiteSOC SDK", () => {
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
-        await client.getAlerts({ status: "open", severity: "critical", alertType: "brute_force_attack", limit: 10, offset: 5 });
+        await client.getAlerts({ status: "open", severity: "critical", alert_type: "brute_force_attack", limit: 10, offset: 5 });
 
         expect(mockFetch).toHaveBeenCalledWith(
           expect.stringContaining("status=open"),
@@ -862,7 +862,7 @@ describe("LiteSOC SDK", () => {
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
-        await client.getEvents({ eventName: "auth.login_failed", actorId: "user-1", severity: "warning", limit: 10, offset: 5 });
+        await client.getEvents({ event_name: "auth.login_failed", actor_id: "user-1", severity: "warning", limit: 10, offset: 5 });
 
         expect(mockFetch).toHaveBeenCalledWith(
           expect.stringContaining("event_name=auth.login_failed"),

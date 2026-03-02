@@ -325,7 +325,7 @@ export interface GetAlertsOptions {
   /** Filter by alert severity */
   severity?: AlertSeverity;
   /** Filter by alert type */
-  alertType?: AlertType;
+  alert_type?: AlertType;
   /** Maximum number of alerts to return (default: 100, max: 500) */
   limit?: number;
   /** Offset for pagination */
@@ -337,9 +337,9 @@ export interface GetAlertsOptions {
  */
 export interface GetEventsOptions {
   /** Filter by event name (e.g., 'auth.login_failed') */
-  eventName?: string;
+  event_name?: string;
   /** Filter by actor ID */
-  actorId?: string;
+  actor_id?: string;
   /** Filter by severity */
   severity?: EventSeverity;
   /** Maximum number of events to return (default: 50, max: 100) */
@@ -821,7 +821,7 @@ export class LiteSOC {
 
     if (options.status) params.append("status", options.status);
     if (options.severity) params.append("severity", options.severity);
-    if (options.alertType) params.append("alert_type", options.alertType);
+    if (options.alert_type) params.append("alert_type", options.alert_type);
     if (options.limit) params.append("limit", String(options.limit));
     if (options.offset) params.append("offset", String(options.offset));
 
@@ -1034,8 +1034,8 @@ export class LiteSOC {
   async getEvents(options: GetEventsOptions = {}): Promise<ApiResponse<PaginatedResponse<Event>>> {
     const params = new URLSearchParams();
 
-    if (options.eventName) params.append("event_name", options.eventName);
-    if (options.actorId) params.append("actor_id", options.actorId);
+    if (options.event_name) params.append("event_name", options.event_name);
+    if (options.actor_id) params.append("actor_id", options.actor_id);
     if (options.severity) params.append("severity", options.severity);
     if (options.limit) params.append("limit", String(options.limit));
     if (options.offset) params.append("offset", String(options.offset));
