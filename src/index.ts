@@ -1,5 +1,5 @@
 /**
- * LiteSOC Node.js/TypeScript SDK v2.1.0
+ * LiteSOC Node.js/TypeScript SDK v2.3.0
  * Official SDK for security event tracking and threat detection
  *
  * Features:
@@ -16,7 +16,7 @@
 // ============================================
 
 /** SDK version */
-export const SDK_VERSION = "2.2.0";
+export const SDK_VERSION = "2.3.0";
 
 /** Default API base URL */
 export const DEFAULT_BASE_URL = "https://api.litesoc.io";
@@ -204,11 +204,23 @@ interface QueuedEvent {
 
 /**
  * API response structure for event ingestion
+ * Matches the actual /collect endpoint response format
  */
 interface IngestApiResponse {
-  success: boolean;
-  event_id?: string;
-  events_accepted?: number;
+  /** Status of the event ingestion: "queued" (production) or "inserted" (debug mode) */
+  status: "queued" | "inserted";
+  /** Quota information */
+  quota?: {
+    /** Remaining events in the monthly quota */
+    remaining: number;
+    /** Total monthly event limit */
+    limit: number;
+  };
+  /** Debug mode flag (only present when DEBUG_DIRECT_INSERT is enabled server-side) */
+  debug?: boolean;
+  /** Organization ID (only present in debug mode) */
+  org_id?: string;
+  /** Error message (only present on failure) */
   error?: string;
 }
 
@@ -289,8 +301,31 @@ export interface Alert {
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
+  /** User ID or identifier who resolved the alert */
+  resolved_by: string | null;
   resolution_notes: string | null;
   metadata: Record<string, unknown>;
+}
+
+/**
+ * Response from PATCH /alerts/:id (resolve or mark_safe)
+ * This is a partial response with update confirmation, not the full Alert object.
+ */
+export interface AlertUpdateResponse {
+  /** Alert UUID */
+  id: string;
+  /** New status after update: "resolved" or "dismissed" */
+  status: AlertStatus;
+  /** Action that was performed: "resolve" or "mark_safe" */
+  action: "resolve" | "mark_safe";
+  /** Resolution type (only for resolve action) */
+  resolution_type: "blocked_ip" | "reset_password" | "contacted_user" | "false_positive" | "other" | null;
+  /** ISO 8601 timestamp when resolved (null for mark_safe) */
+  resolved_at: string | null;
+  /** User ID or identifier who resolved the alert */
+  resolved_by: string;
+  /** ISO 8601 timestamp of the update */
+  updated_at: string;
 }
 
 /**
@@ -298,10 +333,43 @@ export interface Alert {
  */
 export interface Event {
   id: string;
+  org_id: string;
   event_name: string;
   actor_id: string | null;
-  actor_email: string | null;
   user_ip: string | null;
+  server_ip: string | null;
+  country_code: string | null;
+  city: string | null;
+  /**
+   * Whether IP is from a known VPN provider
+   * @remarks Pro/Enterprise only. Returns `null` for Free tier (redacted).
+   */
+  is_vpn: boolean | null;
+  /**
+   * Whether IP is a Tor exit node
+   * @remarks Pro/Enterprise only. Returns `null` for Free tier (redacted).
+   */
+  is_tor: boolean | null;
+  /**
+   * Whether IP is from a known proxy service
+   * @remarks Pro/Enterprise only. Returns `null` for Free tier (redacted).
+   */
+  is_proxy: boolean | null;
+  /**
+   * Whether IP is from a datacenter/cloud provider
+   * @remarks Pro/Enterprise only. Returns `null` for Free tier (redacted).
+   */
+  is_datacenter: boolean | null;
+  /**
+   * GPS latitude coordinate
+   * @remarks Pro/Enterprise only. Returns `null` for Free tier (redacted).
+   */
+  latitude: number | null;
+  /**
+   * GPS longitude coordinate
+   * @remarks Pro/Enterprise only. Returns `null` for Free tier (redacted).
+   */
+  longitude: number | null;
   severity: EventSeverity;
   metadata: Record<string, unknown>;
   created_at: string;
@@ -347,6 +415,28 @@ export interface PaginatedResponse<T> {
   total: number;
   limit: number;
   offset: number;
+  has_more: boolean;
+}
+
+/**
+ * Internal: Raw API response structure for paginated endpoints
+ */
+interface RawPaginatedApiResponse<T> {
+  success: boolean;
+  data: T[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  };
+  meta?: {
+    plan?: string;
+    retention_days?: number;
+    cutoff_date?: string;
+    redacted?: boolean;
+    max_limit?: number;
+  };
 }
 
 /**
@@ -797,8 +887,19 @@ export class LiteSOC {
     const queryString = params.toString();
     const url = `${this.baseUrl}/alerts${queryString ? `?${queryString}` : ""}`;
 
-    const response = await this.makeRequest<PaginatedResponse<Alert>>("GET", url);
-    return response;
+    // API returns: { success, data: [...], pagination: { total, limit, offset, has_more } }
+    const response = await this.makeRequest<RawPaginatedApiResponse<Alert>>("GET", url);
+    
+    // Transform to PaginatedResponse format
+    const paginatedData: PaginatedResponse<Alert> = {
+      data: response.data.data,
+      total: response.data.pagination.total,
+      limit: response.data.pagination.limit,
+      offset: response.data.pagination.offset,
+      has_more: response.data.pagination.has_more,
+    };
+
+    return { data: paginatedData, metadata: response.metadata };
   }
 
   /**
@@ -838,11 +939,17 @@ export class LiteSOC {
    * This is useful for closing alerts after investigation.
    *
    * @param alertId - The unique alert ID to resolve
-   * @param notes - Optional resolution notes explaining how the alert was resolved
-   * @returns Promise resolving to the updated alert with plan metadata
+   * @param resolutionType - Type of resolution action taken
+   * @param options - Optional resolution options
+   * @param options.notes - Resolution notes explaining how the alert was resolved
+   * @param options.resolvedBy - Identifier of who resolved the alert (e.g., user ID, email, or "system")
+   * @returns Promise resolving to the update confirmation with plan metadata
    *
    * @remarks
    * **Plan availability:** Pro, Enterprise only
+   * 
+   * **Response:** Returns an `AlertUpdateResponse` with confirmation of the update,
+   * not the full Alert object. Use `getAlert()` if you need the complete alert data.
    *
    * @throws {PlanRestrictedError} When called with a Free plan API key
    * @throws {NotFoundError} When the alert doesn't exist
@@ -850,19 +957,20 @@ export class LiteSOC {
    *
    * @example
    * ```typescript
-   * const { data: alert } = await litesoc.resolveAlert(
+   * const { data: result } = await litesoc.resolveAlert(
    *   'alert_abc123',
    *   'blocked_ip',
-   *   'Verified as authorized access by admin team'
+   *   { notes: 'Verified as authorized access', resolvedBy: 'admin@example.com' }
    * );
-   * console.log(`Alert resolved at: ${alert.resolved_at}`);
+   * console.log(`Alert ${result.id} resolved at: ${result.resolved_at}`);
+   * console.log(`New status: ${result.status}`); // "resolved"
    * ```
    */
   async resolveAlert(
     alertId: string,
     resolutionType: "blocked_ip" | "reset_password" | "contacted_user" | "false_positive" | "other" = "other",
-    notes?: string
-  ): Promise<ApiResponse<Alert>> {
+    options?: { notes?: string; resolvedBy?: string }
+  ): Promise<ApiResponse<AlertUpdateResponse>> {
     if (!alertId) {
       throw new ValidationError("alertId is required");
     }
@@ -872,11 +980,14 @@ export class LiteSOC {
       action: "resolve",
       resolution_type: resolutionType,
     };
-    if (notes) {
-      body.internal_notes = notes;
+    if (options?.notes) {
+      body.internal_notes = options.notes;
+    }
+    if (options?.resolvedBy) {
+      body.resolved_by = options.resolvedBy;
     }
 
-    const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);
+    const response = await this.makeRequest<{ data: AlertUpdateResponse }>("PATCH", url, body);
     return { data: response.data.data, metadata: response.metadata };
   }
 
@@ -886,25 +997,35 @@ export class LiteSOC {
    * Marks an alert as dismissed/safe, indicating it was a false positive.
    *
    * @param alertId - The unique alert ID to mark as safe
-   * @param notes - Optional notes explaining why this is a false positive
+   * @param options - Optional options (notes or string for backward compatibility)
+   * @param options.notes - Notes explaining why this is a false positive
+   * @param options.markedSafeBy - Identifier of who marked the alert safe (e.g., user ID, email)
    * @returns Promise resolving to the updated alert with plan metadata
    *
    * @remarks
    * **Plan availability:** Pro, Enterprise only
+   * 
+   * **Note:** This uses PATCH /alerts/:id. There are also POST /alerts/resolve and
+   * POST /alerts/safe endpoints, but those are reserved for n8n integration only.
    *
    * @throws {PlanRestrictedError} When called with a Free plan API key
    * @throws {NotFoundError} When the alert doesn't exist
    * @throws {AuthenticationError} When the API key is invalid
+   * @returns Promise resolving to the alert update result with plan metadata
    *
    * @example
    * ```typescript
-   * const { data: alert } = await litesoc.markAlertSafe(
+   * const { data: result } = await litesoc.markAlertSafe(
    *   'alert_abc123',
-   *   'User was traveling for business, confirmed via HR'
+   *   { notes: 'User was traveling for business', markedSafeBy: 'hr@example.com' }
    * );
+   * // result contains: id, status, action, resolution_type, resolved_at, resolved_by, updated_at
    * ```
    */
-  async markAlertSafe(alertId: string, notes?: string): Promise<ApiResponse<Alert>> {
+  async markAlertSafe(
+    alertId: string, 
+    options?: string | { notes?: string; markedSafeBy?: string }
+  ): Promise<ApiResponse<AlertUpdateResponse>> {
     if (!alertId) {
       throw new ValidationError("alertId is required");
     }
@@ -913,11 +1034,20 @@ export class LiteSOC {
     const body: Record<string, string> = {
       action: "mark_safe",
     };
-    if (notes) {
-      body.internal_notes = notes;
+    
+    // Support both string (backward compat) and options object
+    if (typeof options === "string") {
+      body.internal_notes = options;
+    } else if (options) {
+      if (options.notes) {
+        body.internal_notes = options.notes;
+      }
+      if (options.markedSafeBy) {
+        body.resolved_by = options.markedSafeBy;
+      }
     }
 
-    const response = await this.makeRequest<{ data: Alert }>("PATCH", url, body);
+    const response = await this.makeRequest<{ data: AlertUpdateResponse }>("PATCH", url, body);
     return { data: response.data.data, metadata: response.metadata };
   }
 
@@ -972,8 +1102,19 @@ export class LiteSOC {
     const queryString = params.toString();
     const url = `${this.baseUrl}/events${queryString ? `?${queryString}` : ""}`;
 
-    const response = await this.makeRequest<PaginatedResponse<Event>>("GET", url);
-    return response;
+    // API returns: { success, data: [...], pagination: { total, limit, offset, has_more } }
+    const response = await this.makeRequest<RawPaginatedApiResponse<Event>>("GET", url);
+    
+    // Transform to PaginatedResponse format
+    const paginatedData: PaginatedResponse<Event> = {
+      data: response.data.data,
+      total: response.data.pagination.total,
+      limit: response.data.pagination.limit,
+      offset: response.data.pagination.offset,
+      has_more: response.data.pagination.has_more,
+    };
+
+    return { data: paginatedData, metadata: response.metadata };
   }
 
   /**
@@ -1078,7 +1219,7 @@ export class LiteSOC {
   async getPlanInfo(): Promise<PlanInfo> {
     // Make a minimal request to retrieve plan headers
     const url = `${this.baseUrl}/events?limit=1`;
-    const response = await this.makeRequest<PaginatedResponse<Event>>("GET", url);
+    const response = await this.makeRequest<RawPaginatedApiResponse<Event>>("GET", url);
 
     const { plan, retentionDays, cutoffDate } = response.metadata;
 
@@ -1393,71 +1534,71 @@ export class LiteSOC {
 
   /**
    * Send events to the LiteSOC ingestion API
+   * Events are sent one at a time (API doesn't support batch payloads)
    */
   private async sendEvents(events: QueuedEvent[]): Promise<void> {
     /* istanbul ignore if -- defensive check, flush() already filters empty */
     if (events.length === 0) return;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const url = `${this.baseUrl}/collect`;
 
-    try {
-      const isBatch = events.length > 1;
-      const body = isBatch ? { events } : events[0];
-      const url = `${this.baseUrl}/collect`;
+    // Send events one at a time (API doesn't support batch format)
+    for (const event of events) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      const response = await this.fetchFn(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": this.apiKey,
-          "User-Agent": USER_AGENT,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      try {
+        const response = await this.fetchFn(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": this.apiKey,
+            "User-Agent": USER_AGENT,
+          },
+          body: JSON.stringify(event),
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error ${response.status}: ${errorText}`);
-      }
-
-      const result: IngestApiResponse = await response.json();
-
-      if (result.success) {
-        this.log(
-          `Successfully sent ${events.length} event(s)`,
-          isBatch ? `(batch, ${result.events_accepted} accepted)` : ""
-        );
-      } else {
-        throw new Error(result.error || "Unknown API error");
-      }
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === "AbortError") {
-        this.log(`Request timed out after ${this.timeout}ms`);
-      }
-
-      // Re-queue events on failure (with limit to prevent infinite loop)
-      const retryableEvents = events.filter(
-        (e) => !((e.metadata as Record<string, number>)._retry_count > 2)
-      );
-
-      if (retryableEvents.length > 0 && this.batching) {
-        this.log(`Re-queuing ${retryableEvents.length} events for retry`);
-        for (const event of retryableEvents) {
-          (event.metadata as Record<string, number>)._retry_count =
-            ((event.metadata as Record<string, number>)._retry_count || 0) + 1;
-          this.queue.unshift(event);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API error ${response.status}: ${errorText}`);
         }
-        this.scheduleFlush();
-      }
 
-      throw error;
+        const result: IngestApiResponse = await response.json();
+
+        if (result.status === "queued" || result.status === "inserted") {
+          this.log(
+            `Successfully sent event: ${event.event}`,
+            result.quota ? `(quota remaining: ${result.quota.remaining}/${result.quota.limit})` : ""
+          );
+        } else if (result.error) {
+          throw new Error(result.error);
+        } else {
+          throw new Error("Unknown API error: unexpected response format");
+        }
+      } catch (error) {
+        clearTimeout(timeoutId);
+
+        if (error instanceof Error && error.name === "AbortError") {
+          this.log(`Request timed out after ${this.timeout}ms`);
+        }
+
+        // Re-queue event on failure (with limit to prevent infinite loop)
+        const retryCount = (event.metadata as Record<string, number>)._retry_count || 0;
+        if (retryCount <= 2 && this.batching) {
+          this.log(`Re-queuing event for retry (attempt ${retryCount + 1})`);
+          (event.metadata as Record<string, number>)._retry_count = retryCount + 1;
+          this.queue.unshift(event);
+          this.scheduleFlush();
+        }
+
+        throw error;
+      }
     }
+
+    this.log(`Successfully sent ${events.length} event(s)`);
   }
 
   /**

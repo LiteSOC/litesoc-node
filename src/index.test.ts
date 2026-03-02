@@ -66,7 +66,7 @@ describe("LiteSOC SDK", () => {
   beforeEach(() => {
     jest.useFakeTimers();
     mockFetch = jest.fn().mockResolvedValue(
-      createMockResponse({ success: true })
+      createMockResponse({ status: "queued", quota: { remaining: 4999, limit: 5000 } })
     );
     global.fetch = mockFetch;
   });
@@ -79,11 +79,11 @@ describe("LiteSOC SDK", () => {
 
   describe("Constants", () => {
     it("should export SDK_VERSION", () => {
-      expect(SDK_VERSION).toBe("2.2.0");
+      expect(SDK_VERSION).toBe("2.3.0");
     });
 
     it("should export USER_AGENT", () => {
-      expect(USER_AGENT).toBe("litesoc-node-sdk/2.2.0");
+      expect(USER_AGENT).toBe("litesoc-node-sdk/2.3.0");
     });
 
     it("should export DEFAULT_BASE_URL", () => {
@@ -227,14 +227,15 @@ describe("LiteSOC SDK", () => {
       expect(mockFetch).not.toHaveBeenCalled();
 
       await client.track("auth.login_success", { actor: { id: "user-2" } });
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // Events are sent one at a time (API doesn't support batch format)
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
     it("should send correct payload to /collect endpoint", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true, events_accepted: 2 }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4998, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 2 });
@@ -245,6 +246,8 @@ describe("LiteSOC SDK", () => {
       });
       await client.track("auth.logout", { actor: { id: "user-1" } });
 
+      // Events are sent one at a time (API doesn't support batch format)
+      expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch).toHaveBeenCalledWith(
         "https://api.litesoc.io/collect",
         expect.objectContaining({
@@ -252,25 +255,27 @@ describe("LiteSOC SDK", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             "X-API-Key": "test-api-key",
-            "User-Agent": "litesoc-node-sdk/2.2.0",
+            "User-Agent": "litesoc-node-sdk/2.3.0",
           }),
         })
       );
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.events).toHaveLength(2);
-      expect(body.events[0]).toMatchObject({
-        event: "auth.login_success",
-        actor: { id: "user-1", email: "test@example.com" },
-        user_ip: "192.168.1.1",
-      });
+      // First event
+      const body1 = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(body1.event).toBe("auth.login_success");
+      expect(body1.actor).toEqual({ id: "user-1", email: "test@example.com" });
+      expect(body1.user_ip).toBe("192.168.1.1");
+
+      // Second event
+      const body2 = JSON.parse(mockFetch.mock.calls[1][1].body);
+      expect(body2.event).toBe("auth.logout");
     });
 
-    it("should send single event without wrapper when batchSize is 1", async () => {
+    it("should send single event directly", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -289,8 +294,8 @@ describe("LiteSOC SDK", () => {
     it("should send immediately when batching is disabled", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batching: false });
@@ -302,8 +307,8 @@ describe("LiteSOC SDK", () => {
     it("should use string actor shorthand", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -320,8 +325,8 @@ describe("LiteSOC SDK", () => {
     it("should create actor from actorEmail when no actor provided", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -337,8 +342,8 @@ describe("LiteSOC SDK", () => {
     it("should use Date timestamp", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -356,8 +361,8 @@ describe("LiteSOC SDK", () => {
     it("should use string timestamp", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -374,8 +379,8 @@ describe("LiteSOC SDK", () => {
     it("should strip severity from payload (server-side assignment)", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -438,6 +443,46 @@ describe("LiteSOC SDK", () => {
       expect(consoleSpy).toHaveBeenCalledWith("[LiteSOC]", expect.stringContaining("Error"));
       consoleSpy.mockRestore();
     });
+
+    it("should log quota information in debug mode when quota is present", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
+      });
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1, debug: true });
+
+      await client.track("auth.login_success", { actor: { id: "user-1" } });
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[LiteSOC]",
+        expect.stringContaining("Successfully sent event"),
+        "(quota remaining: 4999/5000)"
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it("should log without quota information when quota is not present", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 202,
+        json: async () => ({ status: "inserted" }), // No quota field
+      });
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1, debug: true });
+
+      await client.track("auth.login_success", { actor: { id: "user-1" } });
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "[LiteSOC]",
+        expect.stringContaining("Successfully sent event"),
+        "" // Empty string when no quota
+      );
+      consoleSpy.mockRestore();
+    });
   });
 
   describe("flush()", () => {
@@ -449,7 +494,8 @@ describe("LiteSOC SDK", () => {
 
       expect(mockFetch).not.toHaveBeenCalled();
       await client.flush();
-      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // Events are sent one at a time (API doesn't support batch format)
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
     it("should not send if queue is empty", async () => {
@@ -466,7 +512,7 @@ describe("LiteSOC SDK", () => {
 
       mockFetch.mockImplementationOnce(async () => {
         await firstPromise;
-        return { ok: true, status: 200, json: async () => ({ success: true }) };
+        return { ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) };
       });
 
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 100 });
@@ -500,7 +546,7 @@ describe("LiteSOC SDK", () => {
       it("should fetch alerts with default params and metadata", async () => {
         mockFetch.mockResolvedValueOnce(
           createMockResponse(
-            { data: [], total: 0, limit: 100, offset: 0 },
+            { success: true, data: [], pagination: { total: 0, limit: 100, offset: 0, has_more: false } },
             { plan: "pro", retentionDays: 30 }
           )
         );
@@ -512,14 +558,14 @@ describe("LiteSOC SDK", () => {
           "https://api.litesoc.io/alerts",
           expect.objectContaining({ method: "GET" })
         );
-        expect(result.data).toEqual({ data: [], total: 0, limit: 100, offset: 0 });
+        expect(result.data).toEqual({ data: [], total: 0, limit: 100, offset: 0, has_more: false });
         expect(result.metadata.plan).toBe("pro");
         expect(result.metadata.retentionDays).toBe(30);
       });
 
       it("should fetch alerts with filters", async () => {
         mockFetch.mockResolvedValueOnce(
-          createMockResponse({ data: [], total: 0, limit: 10, offset: 0 })
+          createMockResponse({ success: true, data: [], pagination: { total: 0, limit: 10, offset: 0, has_more: false } })
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
@@ -711,7 +757,7 @@ describe("LiteSOC SDK", () => {
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
-        const result = await client.resolveAlert("alert-123", "false_positive", "False positive - verified");
+        const result = await client.resolveAlert("alert-123", "false_positive", { notes: "False positive - verified" });
 
         expect(mockFetch).toHaveBeenCalledWith(
           "https://api.litesoc.io/alerts/alert-123",
@@ -723,6 +769,21 @@ describe("LiteSOC SDK", () => {
         expect(body.internal_notes).toBe("False positive - verified");
         expect(result.data.status).toBe("resolved");
         expect(result.metadata.plan).toBe("enterprise");
+      });
+
+      it("should include resolved_by when provided", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({ data: { id: "alert-123", status: "resolved" } })
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        await client.resolveAlert("alert-123", "blocked_ip", { notes: "Blocked", resolvedBy: "admin@example.com" });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.action).toBe("resolve");
+        expect(body.resolution_type).toBe("blocked_ip");
+        expect(body.internal_notes).toBe("Blocked");
+        expect(body.resolved_by).toBe("admin@example.com");
       });
 
       it("should resolve with default resolution type and no notes", async () => {
@@ -746,7 +807,7 @@ describe("LiteSOC SDK", () => {
     });
 
     describe("markAlertSafe()", () => {
-      it("should PATCH to alert endpoint with action mark_safe and notes", async () => {
+      it("should PATCH to alert endpoint with action mark_safe and notes (string)", async () => {
         mockFetch.mockResolvedValueOnce(
           createMockResponse(
             { data: { id: "alert-123", status: "dismissed" } },
@@ -766,6 +827,20 @@ describe("LiteSOC SDK", () => {
         expect(body.internal_notes).toBe("Known behavior");
         expect(result.data.status).toBe("dismissed");
         expect(result.metadata.plan).toBe("pro");
+      });
+
+      it("should include markedSafeBy when using options object", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({ data: { id: "alert-123", status: "dismissed" } })
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        await client.markAlertSafe("alert-123", { notes: "Travel confirmed", markedSafeBy: "hr@example.com" });
+
+        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(body.action).toBe("mark_safe");
+        expect(body.internal_notes).toBe("Travel confirmed");
+        expect(body.resolved_by).toBe("hr@example.com");
       });
 
       it("should mark safe without notes", async () => {
@@ -791,7 +866,7 @@ describe("LiteSOC SDK", () => {
       it("should fetch events with default params and metadata", async () => {
         mockFetch.mockResolvedValueOnce(
           createMockResponse(
-            { data: [], total: 0, limit: 50, offset: 0 },
+            { success: true, data: [], pagination: { total: 0, limit: 50, offset: 0, has_more: false } },
             { plan: "free", retentionDays: 7 }
           )
         );
@@ -803,14 +878,14 @@ describe("LiteSOC SDK", () => {
           "https://api.litesoc.io/events",
           expect.objectContaining({ method: "GET" })
         );
-        expect(result.data).toEqual({ data: [], total: 0, limit: 50, offset: 0 });
+        expect(result.data).toEqual({ data: [], total: 0, limit: 50, offset: 0, has_more: false });
         expect(result.metadata.plan).toBe("free");
         expect(result.metadata.retentionDays).toBe(7);
       });
 
       it("should fetch events with filters", async () => {
         mockFetch.mockResolvedValueOnce(
-          createMockResponse({ data: [], total: 0, limit: 50, offset: 0 })
+          createMockResponse({ success: true, data: [], pagination: { total: 0, limit: 50, offset: 0, has_more: false } })
         );
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
@@ -858,7 +933,7 @@ describe("LiteSOC SDK", () => {
       it("should fetch plan info from events endpoint", async () => {
         mockFetch.mockResolvedValueOnce(
           createMockResponse(
-            { data: [], total: 0, limit: 1, offset: 0 },
+            { success: true, data: [], pagination: { total: 0, limit: 1, offset: 0, has_more: false } },
             { plan: "pro", retentionDays: 30, cutoffDate: "2026-01-30T00:00:00Z" }
           )
         );
@@ -880,7 +955,7 @@ describe("LiteSOC SDK", () => {
       it("should return correct features for free plan", async () => {
         mockFetch.mockResolvedValueOnce(
           createMockResponse(
-            { data: [], total: 0, limit: 1, offset: 0 },
+            { success: true, data: [], pagination: { total: 0, limit: 1, offset: 0, has_more: false } },
             { plan: "free", retentionDays: 7 }
           )
         );
@@ -897,7 +972,7 @@ describe("LiteSOC SDK", () => {
       it("should return correct features for enterprise plan", async () => {
         mockFetch.mockResolvedValueOnce(
           createMockResponse(
-            { data: [], total: 0, limit: 1, offset: 0 },
+            { success: true, data: [], pagination: { total: 0, limit: 1, offset: 0, has_more: false } },
             { plan: "enterprise", retentionDays: 90 }
           )
         );
@@ -916,7 +991,7 @@ describe("LiteSOC SDK", () => {
           ok: true,
           status: 200,
           headers: { get: () => null },
-          json: async () => ({ data: [], total: 0, limit: 1, offset: 0 }),
+          json: async () => ({ success: true, data: [], pagination: { total: 0, limit: 1, offset: 0, has_more: false } }),
         });
 
         const client = new LiteSOC({ apiKey: "test-api-key" });
@@ -1057,7 +1132,7 @@ describe("LiteSOC SDK", () => {
 
   describe("Convenience Methods", () => {
     it("trackLoginFailed should track auth.login_failed", async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
       await client.trackLoginFailed("user-1", { userIp: "192.168.1.1" });
@@ -1067,7 +1142,7 @@ describe("LiteSOC SDK", () => {
     });
 
     it("trackLoginSuccess should track auth.login_success", async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
       await client.trackLoginSuccess("user-1");
@@ -1077,7 +1152,7 @@ describe("LiteSOC SDK", () => {
     });
 
     it("trackPrivilegeEscalation should track admin.privilege_escalation event", async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
       await client.trackPrivilegeEscalation("user-1");
@@ -1090,7 +1165,7 @@ describe("LiteSOC SDK", () => {
     });
 
     it("trackSensitiveAccess should track data.sensitive_access with resource", async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
       await client.trackSensitiveAccess("user-1", "customer_data");
@@ -1101,7 +1176,7 @@ describe("LiteSOC SDK", () => {
     });
 
     it("trackBulkDelete should track data.bulk_delete with record count", async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
       await client.trackBulkDelete("user-1", 1000);
@@ -1112,7 +1187,7 @@ describe("LiteSOC SDK", () => {
     });
 
     it("trackRoleChanged should track authz.role_changed with old and new roles", async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
       await client.trackRoleChanged("user-1", "user", "admin");
@@ -1124,7 +1199,7 @@ describe("LiteSOC SDK", () => {
     });
 
     it("trackAccessDenied should track authz.access_denied with resource", async () => {
-      mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+      mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
 
       await client.trackAccessDenied("user-1", "/admin/settings");
@@ -1262,8 +1337,8 @@ describe("LiteSOC SDK", () => {
       it("should handle track with no options parameter", async () => {
         mockFetch.mockResolvedValue({
           ok: true,
-          status: 200,
-          json: async () => ({ success: true }),
+          status: 202,
+          json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
         });
 
         const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -1279,8 +1354,8 @@ describe("LiteSOC SDK", () => {
       it("should handle track with no actor and no actorEmail", async () => {
         mockFetch.mockResolvedValue({
           ok: true,
-          status: 200,
-          json: async () => ({ success: true }),
+          status: 202,
+          json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
         });
 
         const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -1296,8 +1371,8 @@ describe("LiteSOC SDK", () => {
       it("should handle actor object without email and use actorEmail", async () => {
         mockFetch.mockResolvedValue({
           ok: true,
-          status: 200,
-          json: async () => ({ success: true }),
+          status: 202,
+          json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
         });
 
         const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
@@ -1490,7 +1565,7 @@ describe("LiteSOC SDK", () => {
 
     describe("Convenience methods coverage", () => {
       beforeEach(() => {
-        mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ success: true }) });
+        mockFetch.mockResolvedValue({ ok: true, status: 202, json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }) });
       });
 
       it("trackLoginFailed should track with actor id", async () => {

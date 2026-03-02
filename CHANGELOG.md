@@ -5,6 +5,25 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-03-02
+
+### Added
+- Comprehensive API documentation in README for all endpoints:
+  - **Event Collection API** (`/collect`) - Full usage examples for event ingestion
+  - **Events API** (`/events`) - List and retrieve security events with filtering
+  - **Alerts API** (`/alerts`) - List, retrieve, resolve, and mark alerts as safe
+- Additional test coverage for quota logging branch (100% coverage maintained)
+
+### Changed
+- **Version** - Updated to 2.3.0
+- **README** - Complete rewrite of API Reference section with endpoint documentation
+
+### Documentation
+- Added API Reference section with all available endpoints
+- Added detailed examples for Management API methods
+- Added pagination examples for list endpoints
+- Added error handling examples for each endpoint
+
 ## [2.2.0] - 2026-03-02
 
 ### Changed
