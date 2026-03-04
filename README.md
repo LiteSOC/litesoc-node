@@ -51,6 +51,35 @@ await litesoc.track('auth.login_failed', {
 await litesoc.flush();
 ```
 
+### Batch Ingestion (v2.5.0+)
+
+Send up to **100 events** in a single HTTP request using `trackBatch`. This maps
+directly to the `{ "events": [...] }` body supported by `POST /collect` and uses
+Redis pipelining in the LiteSOC backend to minimize latency and Upstash costs.
+
+```typescript
+import { LiteSOC } from 'litesoc';
+
+const litesoc = new LiteSOC({ apiKey: 'your-api-key' });
+
+const { queued } = await litesoc.trackBatch([
+  {
+    eventName: 'auth.login_success',
+    actor: { id: 'user_123', email: 'user@example.com' },
+    userIp: '203.0.113.50',
+    metadata: { method: 'password' },
+  },
+  {
+    eventName: 'data.export',
+    actor: 'user_123',
+    userIp: '203.0.113.50',
+    metadata: { table: 'orders', rows: 500 },
+  },
+]);
+
+console.log(`${queued} events accepted`);
+```
+
 ## Security Intelligence (Automatic Enrichment)
 
 When you provide `userIp`, LiteSOC automatically enriches your events with:

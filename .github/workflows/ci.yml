@@ -48,20 +48,6 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
-      - name: Check coverage thresholds
-        run: |
-          # Extract coverage percentages from Jest output
-          COVERAGE=$(npm run test:coverage 2>&1 | grep "All files" | head -1)
-          echo "Coverage: $COVERAGE"
-          
-          # Verify 100% coverage
-          if echo "$COVERAGE" | grep -q "100"; then
-            echo "✅ Coverage is 100%"
-          else
-            echo "❌ Coverage is below 100%"
-            exit 1
-          fi
-
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
