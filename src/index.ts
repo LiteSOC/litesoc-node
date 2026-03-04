@@ -16,7 +16,7 @@
 // ============================================
 
 /** SDK version */
-export const SDK_VERSION = "2.4.0";
+export const SDK_VERSION = "2.5.0";
 
 /** Default API base URL */
 export const DEFAULT_BASE_URL = "https://api.litesoc.io";
@@ -192,6 +192,34 @@ export interface TrackOptions {
 }
 
 /**
+ * A single event entry for use with {@link LiteSOC.trackBatch}.
+ *
+ * @example
+ * ```typescript
+ * const events: BatchEventInput[] = [
+ *   { eventName: 'auth.login_success', actor: userId, userIp: clientIp },
+ *   { eventName: 'data.export',        actor: userId, userIp: clientIp, metadata: { rows: 500 } },
+ * ];
+ * const { queued } = await litesoc.trackBatch(events);
+ * ```
+ */
+export interface BatchEventInput {
+  /** The security event name (e.g. `"auth.login_failed"`) */
+  eventName: EventType | (string & {});
+  /** Actor who performed the event */
+  actor?: Actor | string;
+  /** Actor email shorthand (used when `actor` is omitted or a plain string) */
+  actorEmail?: string;
+  /**
+   * End-user's IP address — required for Behavioral AI, GeoIP maps, and
+   * Network Intelligence features.
+   */
+  userIp?: string;
+  /** Additional metadata for the event */
+  metadata?: EventMetadata;
+}
+
+/**
  * Internal event structure for the queue
  */
 interface QueuedEvent {
@@ -209,6 +237,10 @@ interface QueuedEvent {
 interface IngestApiResponse {
   /** Status of the event ingestion: "queued" (production) or "inserted" (debug mode) */
   status: "queued" | "inserted";
+  /** Number of events accepted (batch responses only) */
+  queued?: number;
+  /** Number of events directly inserted (debug batch responses only) */
+  inserted?: number;
   /** Quota information */
   quota?: {
     /** Remaining events in the monthly quota */
@@ -770,6 +802,121 @@ export class LiteSOC {
       await this.sendEvents(events);
     } finally {
       this.isFlushing = false;
+    }
+  }
+
+  // ============================================
+  // BATCH EVENT INGESTION
+  // ============================================
+
+  /**
+   * Track multiple security events in a **single API request**.
+   *
+   * Use this instead of calling `track()` in a loop when you already have a
+   * set of events ready to send.  Under the hood it posts
+   * `{ events: [...] }` to the `/collect` endpoint, which uses Redis
+   * pipelining server-side so the entire batch costs **one Upstash
+   * request unit** instead of N.
+   *
+   * - Max **100 events** per call (throw `LiteSOCError` if exceeded).
+   * - Quota is reserved atomically for the full batch.
+   * - Rate-limit counter is incremented by the batch size, not by 1.
+   *
+   * @param events - Array of {@link BatchEventInput} objects
+   * @returns The number of events accepted by the server
+   *
+   * @remarks
+   * **Plan availability:** Free, Pro, Enterprise
+   *
+   * @example
+   * ```typescript
+   * const { queued } = await litesoc.trackBatch([
+   *   { eventName: 'auth.login_success', actor: userId, userIp: clientIp },
+   *   { eventName: 'data.export',        actor: userId, userIp: clientIp,
+   *     metadata: { rows: 500, table: 'orders' } },
+   * ]);
+   * console.log(`${queued} events accepted`);
+   * ```
+   */
+  async trackBatch(events: BatchEventInput[]): Promise<{ queued: number }> {
+    if (events.length === 0) return { queued: 0 };
+    if (events.length > 100) {
+      this.handleError(
+        "trackBatch",
+        new LiteSOCError(
+          "trackBatch supports up to 100 events per call. Split into multiple calls.",
+          400,
+          "BATCH_TOO_LARGE"
+        )
+      );
+      return { queued: 0 };
+    }
+
+    const url = `${this.baseUrl}/collect`;
+
+    const payload = {
+      events: events.map((e) => {
+        let actor: Actor | null = null;
+        if (e.actor) {
+          if (typeof e.actor === "string") {
+            actor = { id: e.actor, email: e.actorEmail };
+          } else {
+            actor = { id: e.actor.id, email: e.actor.email || e.actorEmail };
+          }
+        } else if (e.actorEmail) {
+          actor = { id: e.actorEmail, email: e.actorEmail };
+        }
+
+        return {
+          event: e.eventName,
+          actor,
+          user_ip: e.userIp || null,
+          metadata: {
+            ...e.metadata,
+            _sdk: "litesoc-node",
+            _sdk_version: SDK_VERSION,
+          },
+        };
+      }),
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await this.fetchFn(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": this.apiKey,
+          "User-Agent": USER_AGENT,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new LiteSOCError(`API error ${response.status}: ${errorText}`, response.status);
+      }
+
+      const result: IngestApiResponse = await response.json();
+      const accepted = result.queued ?? result.inserted ?? events.length;
+
+      this.log(
+        `trackBatch: ${accepted} event(s) accepted`,
+        result.quota
+          ? `(quota remaining: ${result.quota.remaining}/${result.quota.limit})`
+          : ""
+      );
+
+      return { queued: accepted };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      this.handleError("trackBatch", error);
+      return { queued: 0 };
     }
   }
 
@@ -1483,60 +1630,68 @@ export class LiteSOC {
 
     const url = `${this.baseUrl}/collect`;
 
-    // Send events one at a time (API doesn't support batch format)
-    for (const event of events) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    // Single event: flat payload { event, actor, … } (unchanged behaviour).
+    // Multiple events: batch format { events: […] } — one HTTP round-trip
+    // to Upstash instead of N, saving latency and request-unit costs.
+    const payload: unknown =
+      events.length === 1 ? events[0] : { events };
 
-      try {
-        const response = await this.fetchFn(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-Key": this.apiKey,
-            "User-Agent": USER_AGENT,
-          },
-          body: JSON.stringify(event),
-          signal: controller.signal,
-        });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        clearTimeout(timeoutId);
+    try {
+      const response = await this.fetchFn(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": this.apiKey,
+          "User-Agent": USER_AGENT,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`API error ${response.status}: ${errorText}`);
-        }
+      clearTimeout(timeoutId);
 
-        const result: IngestApiResponse = await response.json();
-
-        if (result.status === "queued" || result.status === "inserted") {
-          this.log(
-            `Successfully sent event: ${event.event}`,
-            result.quota ? `(quota remaining: ${result.quota.remaining}/${result.quota.limit})` : ""
-          );
-        } else if (result.error) {
-          throw new Error(result.error);
-        } else {
-          throw new Error("Unknown API error: unexpected response format");
-        }
-      } catch (error) {
-        clearTimeout(timeoutId);
-
-        if (error instanceof Error && error.name === "AbortError") {
-          this.log(`Request timed out after ${this.timeout}ms`);
-        }
-
-        // Re-queue event on failure (with limit to prevent infinite loop)
-        const retryCount = (event.metadata as Record<string, number>)._retry_count || 0;
-        if (retryCount <= 2 && this.batching) {
-          this.log(`Re-queuing event for retry (attempt ${retryCount + 1})`);
-          (event.metadata as Record<string, number>)._retry_count = retryCount + 1;
-          this.queue.unshift(event);
-          this.scheduleFlush();
-        }
-
-        throw error;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error ${response.status}: ${errorText}`);
       }
+
+      const result: IngestApiResponse = await response.json();
+
+      if (result.status === "queued" || result.status === "inserted") {
+        const count = result.queued ?? result.inserted ?? events.length;
+        this.log(
+          `Successfully sent ${count} event(s)`,
+          result.quota ? `(quota remaining: ${result.quota.remaining}/${result.quota.limit})` : ""
+        );
+      } else if (result.error) {
+        throw new Error(result.error);
+      } else {
+        throw new Error("Unknown API error: unexpected response format");
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === "AbortError") {
+        this.log(`Request timed out after ${this.timeout}ms`);
+      }
+
+      // Re-queue all events on failure (up to 3 retries per event)
+      if (this.batching) {
+        for (const event of events) {
+          const retryCount = (event.metadata as Record<string, number>)._retry_count || 0;
+          if (retryCount <= 2) {
+            this.log(`Re-queuing event for retry (attempt ${retryCount + 1})`);
+            (event.metadata as Record<string, number>)._retry_count = retryCount + 1;
+            this.queue.unshift(event);
+          }
+        }
+        this.scheduleFlush();
+      }
+
+      throw error;
     }
 
     this.log(`Successfully sent ${events.length} event(s)`);

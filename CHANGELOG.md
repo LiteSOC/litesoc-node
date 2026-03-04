@@ -5,6 +5,25 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-03-03
+
+### Added
+- **Batch ingestion support** for the Event Collection API:
+  - New `trackBatch(events: BatchEventInput[])` helper to send up to 100 events in a single POST `/collect` request.
+  - Internal `sendEvents()` now uses the `{ events: [...] }` batch format when flushing multiple queued events.
+
+### Changed
+- **Ingestion performance**:
+  - When flushing, multiple queued events are sent in a single HTTP request instead of one-by-one, reducing latency and network overhead.
+  - Response handling now understands batch responses with `queued`/`inserted` counts while remaining backward compatible.
+- **Logging (debug mode)**:
+  - Debug logs now show `Successfully sent N event(s)` with quota remaining information when available.
+
+### Notes
+- This release is fully backward compatible:
+  - Existing `track()` calls and single-event behavior are unchanged.
+  - The SDK still sends the same payload shape for single events; batching is an optimization for multiple events.
+
 ## [2.4.0] - 2026-03-02
 
 ### Changed

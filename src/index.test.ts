@@ -10,6 +10,7 @@ import {
   NotFoundError,
   ValidationError,
   LiteSOCError,
+  EventType,
 } from "./index";
 
 /**
@@ -79,11 +80,11 @@ describe("LiteSOC SDK", () => {
 
   describe("Constants", () => {
     it("should export SDK_VERSION", () => {
-      expect(SDK_VERSION).toBe("2.4.0");
+      expect(SDK_VERSION).toBe("2.5.0");
     });
 
     it("should export USER_AGENT", () => {
-      expect(USER_AGENT).toBe("litesoc-node-sdk/2.4.0");
+      expect(USER_AGENT).toBe(`litesoc-node-sdk/${SDK_VERSION}`);
     });
 
     it("should export DEFAULT_BASE_URL", () => {
@@ -227,8 +228,8 @@ describe("LiteSOC SDK", () => {
       expect(mockFetch).not.toHaveBeenCalled();
 
       await client.track("auth.login_success", { actor: { id: "user-2" } });
-      // Events are sent one at a time (API doesn't support batch format)
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      // When batch size is reached, events are sent in a single batched request
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it("should send correct payload to /collect endpoint", async () => {
@@ -246,8 +247,8 @@ describe("LiteSOC SDK", () => {
       });
       await client.track("auth.logout", { actor: { id: "user-1" } });
 
-      // Events are sent one at a time (API doesn't support batch format)
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      // Events are sent in a single batched request
+      expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
         "https://api.litesoc.io/collect",
         expect.objectContaining({
@@ -255,20 +256,21 @@ describe("LiteSOC SDK", () => {
           headers: expect.objectContaining({
             "Content-Type": "application/json",
             "X-API-Key": "test-api-key",
-            "User-Agent": "litesoc-node-sdk/2.4.0",
+            "User-Agent": `litesoc-node-sdk/${SDK_VERSION}`,
           }),
         })
       );
 
-      // First event
-      const body1 = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body1.event).toBe("auth.login_success");
-      expect(body1.actor).toEqual({ id: "user-1", email: "test@example.com" });
-      expect(body1.user_ip).toBe("192.168.1.1");
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(Array.isArray(body.events)).toBe(true);
+      expect(body.events).toHaveLength(2);
 
-      // Second event
-      const body2 = JSON.parse(mockFetch.mock.calls[1][1].body);
-      expect(body2.event).toBe("auth.logout");
+      const [event1, event2] = body.events;
+      expect(event1.event).toBe("auth.login_success");
+      expect(event1.actor).toEqual({ id: "user-1", email: "test@example.com" });
+      expect(event1.user_ip).toBe("192.168.1.1");
+
+      expect(event2.event).toBe("auth.logout");
     });
 
     it("should send single event directly", async () => {
@@ -458,7 +460,7 @@ describe("LiteSOC SDK", () => {
 
       expect(consoleSpy).toHaveBeenCalledWith(
         "[LiteSOC]",
-        expect.stringContaining("Successfully sent event"),
+        expect.stringContaining("Successfully sent 1 event(s)"),
         "(quota remaining: 4999/5000)"
       );
       consoleSpy.mockRestore();
@@ -478,10 +480,121 @@ describe("LiteSOC SDK", () => {
 
       expect(consoleSpy).toHaveBeenCalledWith(
         "[LiteSOC]",
-        expect.stringContaining("Successfully sent event"),
+        expect.stringContaining("Successfully sent 1 event(s)"),
         "" // Empty string when no quota
       );
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe("trackBatch()", () => {
+    it("should return 0 queued and not call fetch when events array is empty", async () => {
+      const client = new LiteSOC({ apiKey: "test-api-key" });
+
+      const result = await client.trackBatch([]);
+
+      expect(result.queued).toBe(0);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("should return 0 for too-large batches (more than 100 events)", async () => {
+      const client = new LiteSOC({ apiKey: "test-api-key" });
+
+      const bigBatch = Array.from({ length: 101 }, (_, i) => ({
+        eventName: "auth.login_success" as EventType,
+        actor: `user-${i}`,
+      }));
+
+      const result = await client.trackBatch(bigBatch);
+
+      expect(result.queued).toBe(0);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("should send a batched payload and return accepted count on success", async () => {
+      mockFetch.mockResolvedValue(
+        createMockResponse(
+          { status: "queued", queued: 2, quota: { remaining: 4998, limit: 5000 } },
+          { status: 202 }
+        )
+      );
+
+      const client = new LiteSOC({ apiKey: "test-api-key", debug: true });
+
+      const result = await client.trackBatch([
+        {
+          eventName: "auth.login_success" as EventType,
+          actor: { id: "user-1", email: "test@example.com" },
+          userIp: "192.168.1.1",
+          metadata: { foo: "bar" },
+        },
+        {
+          eventName: "auth.logout" as EventType,
+          actor: "user-1",
+        },
+      ]);
+
+      expect(result.queued).toBe(2);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      const [url, initRaw] = mockFetch.mock.calls[0];
+      const init = initRaw as { method: string; body: string };
+      expect(url).toBe("https://api.litesoc.io/collect");
+      expect(init.method).toBe("POST");
+
+      const body = JSON.parse(init.body);
+      expect(Array.isArray(body.events)).toBe(true);
+      expect(body.events).toHaveLength(2);
+
+      const [event1, event2] = body.events;
+      expect(event1.event).toBe("auth.login_success");
+      expect(event1.actor).toEqual({ id: "user-1", email: "test@example.com" });
+      expect(event1.user_ip).toBe("192.168.1.1");
+      expect(event1.metadata._sdk).toBe("litesoc-node");
+      expect(event1.metadata._sdk_version).toBe(SDK_VERSION);
+
+      expect(event2.event).toBe("auth.logout");
+      expect(event2.actor).toEqual({ id: "user-1", email: undefined });
+      expect(event2.user_ip).toBeNull();
+      expect(event2.metadata._sdk).toBe("litesoc-node");
+      expect(event2.metadata._sdk_version).toBe(SDK_VERSION);
+    });
+
+    it("should derive actor from actorEmail when actor is omitted", async () => {
+      mockFetch.mockResolvedValue(
+        createMockResponse({ status: "queued", queued: 1 }, { status: 202 })
+      );
+
+      const client = new LiteSOC({ apiKey: "test-api-key" });
+
+      await client.trackBatch([
+        {
+          eventName: "auth.login_success" as EventType,
+          actorEmail: "user@example.com",
+        },
+      ]);
+
+      const [, initRaw] = mockFetch.mock.calls[0];
+      const init = initRaw as { body: string };
+      const body = JSON.parse(init.body);
+      const [event] = body.events;
+
+      expect(event.actor).toEqual({ id: "user@example.com", email: "user@example.com" });
+    });
+
+    it("should return 0 when the API responds with an error status", async () => {
+      mockFetch.mockResolvedValue(
+        createMockResponse({ error: "Something went wrong" }, { ok: false, status: 500 })
+      );
+
+      const client = new LiteSOC({ apiKey: "test-api-key" });
+
+      const result = await client.trackBatch([
+        { eventName: "auth.login_failed" as EventType, actor: "user-1" },
+      ]);
+
+      expect(result.queued).toBe(0);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -494,8 +607,8 @@ describe("LiteSOC SDK", () => {
 
       expect(mockFetch).not.toHaveBeenCalled();
       await client.flush();
-      // Events are sent one at a time (API doesn't support batch format)
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+      // Events are now sent in a single batch request to /collect
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it("should not send if queue is empty", async () => {
