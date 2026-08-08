@@ -1,0 +1,92 @@
+# Publishes the `litesoc` npm package on every version tag push (v*.*.*), with
+# npm provenance (a cryptographic attestation that the package was built by this
+# exact workflow, from this repo and commit). Also runnable manually
+# (workflow_dispatch) to publish an existing tag.
+#
+# ─── ONE-TIME SETUP (pick ONE auth method) ──────────────────────────────────
+#
+# A) OIDC Trusted Publishing (recommended — no long-lived secret):
+#      npmjs.com → the `litesoc` package → Settings → "Publishing access" →
+#      Trusted Publishers → Add → GitHub Actions:
+#        Repository:  LiteSOC/litesoc-node
+#        Workflow:    publish.yml
+#      Leave the NPM_TOKEN secret UNSET; npm uses the OIDC token below.
+#
+# B) Automation token (fallback):
+#      npmjs.com → Access Tokens → Generate a Granular token with
+#      "Read and write" publish access scoped to the `litesoc` package.
+#      GitHub → Settings → Secrets and variables → Actions → new secret
+#      named NPM_TOKEN.
+#
+# ─── RELEASE FLOW ───────────────────────────────────────────────────────────
+#   1. Bump the version in package.json AND src/index.ts (SDK_VERSION), update
+#      CHANGELOG.md, commit, and push to main.
+#   2. Tag it:  git tag vX.Y.Z && git push origin vX.Y.Z
+#      → this workflow verifies, publishes to npm with provenance, and creates
+#        a GitHub Release.
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: {}
+
+# Never run two publishes for the same ref at once.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # npm provenance (OIDC)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify (lint · type-check · test · build)
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run test
+          npm run build
+
+      - name: Verify package version matches the tag
+        if: github.event_name == 'push'
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$PKG" != "$TAG" ]; then
+            echo "::error::package.json version ($PKG) does not match tag ($TAG)"
+            exit 1
+          fi
+          echo "Publishing litesoc@$PKG"
+
+      - name: Publish to npm with provenance
+        # If NPM_TOKEN is unset, npm falls back to OIDC trusted publishing
+        # (requires the trusted publisher configured on npmjs.com — option A).
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
