@@ -1,29 +1,25 @@
-# Publishes the `litesoc` npm package on every version tag push (v*.*.*), with
-# npm provenance (a cryptographic attestation that the package was built by this
-# exact workflow, from this repo and commit). Also runnable manually
-# (workflow_dispatch) to publish an existing tag.
+# Publishes the `litesoc` npm package on a v*.*.* tag push, with npm provenance.
+# Also runnable manually (workflow_dispatch) against an existing tag.
+#
+# SECURITY DESIGN:
+#   - `verify` runs all repo/dependency code (lint/type/test/build) with NO
+#     secrets and only `contents: read`, then uploads the built `dist/`.
+#   - `publish` holds the npm token + OIDC id-token but runs NO third-party or
+#     repo code: it downloads the pre-built `dist/` and runs
+#     `npm publish --ignore-scripts`. This keeps the publish credentials away
+#     from any code that could exfiltrate them.
+#   - All actions are pinned to commit SHAs (supply-chain hardening).
 #
 # ─── ONE-TIME SETUP (pick ONE auth method) ──────────────────────────────────
-#
-# A) OIDC Trusted Publishing (recommended — no long-lived secret):
-#      npmjs.com → the `litesoc` package → Settings → "Publishing access" →
-#      Trusted Publishers → Add → GitHub Actions:
-#        Repository:  LiteSOC/litesoc-node
-#        Workflow:    publish.yml
-#      Leave the NPM_TOKEN secret UNSET; npm uses the OIDC token below.
-#
-# B) Automation token (fallback):
-#      npmjs.com → Access Tokens → Generate a Granular token with
-#      "Read and write" publish access scoped to the `litesoc` package.
-#      GitHub → Settings → Secrets and variables → Actions → new secret
-#      named NPM_TOKEN.
+# A) OIDC Trusted Publishing (recommended, no secret): npmjs.com → the `litesoc`
+#    package → Settings → Publishing access → Trusted Publishers → add GitHub
+#    Actions (repo LiteSOC/litesoc-node, workflow publish.yml). Leave NPM_TOKEN unset.
+# B) Automation token: create a granular npm token (read+write on `litesoc`) and
+#    add it as the NPM_TOKEN repo secret.
 #
 # ─── RELEASE FLOW ───────────────────────────────────────────────────────────
-#   1. Bump the version in package.json AND src/index.ts (SDK_VERSION), update
-#      CHANGELOG.md, commit, and push to main.
-#   2. Tag it:  git tag vX.Y.Z && git push origin vX.Y.Z
-#      → this workflow verifies, publishes to npm with provenance, and creates
-#        a GitHub Release.
+#   Bump package.json + src/index.ts SDK_VERSION, update CHANGELOG.md, commit,
+#   push to main, then: git tag vX.Y.Z && git push origin vX.Y.Z
 
 name: Publish
 
@@ -33,60 +29,98 @@ on:
       - "v*.*.*"
   workflow_dispatch: {}
 
-# Never run two publishes for the same ref at once.
+permissions:
+  contents: read
+
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish to npm
+  verify:
+    name: Verify & build
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the GitHub Release
-      id-token: write # npm provenance (OIDC)
-
+      contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          registry-url: "https://registry.npmjs.org"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify (lint · type-check · test · build)
+      - name: Lint · type-check · test · build
         run: |
           npm run lint
           npm run typecheck
           npm run test
           npm run build
 
-      - name: Verify package version matches the tag
-        if: github.event_name == 'push'
+      - name: Upload built package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # npm provenance (OIDC)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download built package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+
+      - name: Verify package version matches the ref
+        # Runs on BOTH push and dispatch: a dispatch must target a tag whose
+        # name equals package.json's version, otherwise publishing is blocked.
         run: |
           PKG=$(node -p "require('./package.json').version")
-          TAG="${GITHUB_REF_NAME#v}"
-          if [ "$PKG" != "$TAG" ]; then
-            echo "::error::package.json version ($PKG) does not match tag ($TAG)"
+          REF="${GITHUB_REF_NAME#v}"
+          if [ "$PKG" != "$REF" ]; then
+            echo "::error::package.json version ($PKG) does not match ref ($GITHUB_REF_NAME). Publish only from tag v$PKG."
             exit 1
           fi
           echo "Publishing litesoc@$PKG"
 
+      - name: Ensure npm supports OIDC trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to npm with provenance
-        # If NPM_TOKEN is unset, npm falls back to OIDC trusted publishing
-        # (requires the trusted publisher configured on npmjs.com — option A).
-        run: npm publish --provenance --access public
+        # --ignore-scripts: dist/ is already built (from `verify`); no repo or
+        # dependency lifecycle scripts run in this token-holding job.
+        run: npm publish --provenance --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           generate_release_notes: true
