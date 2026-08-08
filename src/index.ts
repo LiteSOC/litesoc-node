@@ -437,6 +437,24 @@ export interface ResponseMetadata {
    * Events older than this date have been purged per your plan's retention policy
    */
   cutoffDate: string | null;
+
+  /**
+   * Total monthly event quota for your plan, parsed from the
+   * `X-LiteSOC-Quota-Limit` response header. Undefined when the header is absent.
+   */
+  quotaLimit?: number;
+
+  /**
+   * Remaining events in your current monthly quota window, parsed from the
+   * `X-LiteSOC-Quota-Remaining` response header. Undefined when the header is absent.
+   */
+  quotaRemaining?: number;
+
+  /**
+   * Events already consumed in your current monthly quota window, parsed from the
+   * `X-LiteSOC-Quota-Used` response header. Undefined when the header is absent.
+   */
+  quotaUsed?: number;
 }
 
 /**
@@ -448,6 +466,36 @@ export interface ApiResponse<T> {
 
   /** Plan metadata extracted from response headers */
   metadata: ResponseMetadata;
+}
+
+/**
+ * Health status returned by getHealth()
+ *
+ * A side-effect-free probe of the LiteSOC API. Always includes the base
+ * service fields; the `organization` and `authenticated` fields are only
+ * present when the request carried a valid API key.
+ */
+export interface HealthStatus {
+  /** Overall service status, e.g. "ok" */
+  status: string;
+
+  /** Service identifier, e.g. "litesoc-api" */
+  service: string;
+
+  /** API version string, e.g. "1.0.0" */
+  version: string;
+
+  /** ISO 8601 timestamp of when the health check was served */
+  timestamp: string;
+
+  /** Organization the API key belongs to (only present for authenticated requests) */
+  organization?: {
+    id: string;
+    name: string;
+  };
+
+  /** Whether the request was authenticated with a valid API key */
+  authenticated?: boolean;
 }
 
 /**
@@ -1304,17 +1352,55 @@ export class LiteSOC {
     const url = `${this.baseUrl}/events?limit=1`;
     const response = await this.makeRequest<RawPaginatedApiResponse<Event>>("GET", url);
 
-    const { plan, retentionDays, cutoffDate } = response.metadata;
+    const { plan, retentionDays, cutoffDate, quotaLimit, quotaRemaining, quotaUsed } =
+      response.metadata;
 
     return {
       plan,
       retentionDays,
       cutoffDate,
+      quotaLimit,
+      quotaRemaining,
+      quotaUsed,
       // Pro and Enterprise plans have Management API access (alerts)
       hasManagementApi: plan === "pro" || plan === "enterprise",
       // Pro and Enterprise plans have Behavioral AI features
       hasBehavioralAi: plan === "pro" || plan === "enterprise",
     };
+  }
+
+  /**
+   * Check the health and connectivity of the LiteSOC API
+   *
+   * A side-effect-free probe that hits `GET /health`. Unlike {@link getPlanInfo},
+   * it does not query `/events`, making it ideal for verifying credentials and
+   * connectivity without touching your data.
+   *
+   * When called with a valid API key the response includes the authenticated
+   * organization; an invalid key raises {@link AuthenticationError}.
+   *
+   * @returns Promise resolving to the parsed health status
+   *
+   * @throws {AuthenticationError} When the API key is invalid
+   *
+   * @remarks
+   * **Plan availability:** Free, Pro, Enterprise
+   *
+   * @example
+   * ```typescript
+   * const health = await litesoc.getHealth();
+   *
+   * console.log(`Service: ${health.service} v${health.version} (${health.status})`);
+   *
+   * if (health.authenticated) {
+   *   console.log(`Authenticated as ${health.organization?.name}`);
+   * }
+   * ```
+   */
+  async getHealth(): Promise<HealthStatus> {
+    const url = `${this.baseUrl}/health`;
+    const response = await this.makeRequest<HealthStatus>("GET", url);
+    return response.data;
   }
 
   // ============================================
@@ -1612,7 +1698,26 @@ export class LiteSOC {
       plan,
       retentionDays,
       cutoffDate: cutoffHeader || null,
+      quotaLimit: this.parseQuotaHeader(response, "X-LiteSOC-Quota-Limit"),
+      quotaRemaining: this.parseQuotaHeader(response, "X-LiteSOC-Quota-Remaining"),
+      quotaUsed: this.parseQuotaHeader(response, "X-LiteSOC-Quota-Used"),
     };
+  }
+
+  /**
+   * Parse a numeric quota header from a response.
+   *
+   * @param response - The fetch Response object
+   * @param headerName - The quota header to read (e.g. "X-LiteSOC-Quota-Limit")
+   * @returns The parsed integer, or undefined when the header is absent or non-numeric
+   */
+  private parseQuotaHeader(response: Response, headerName: string): number | undefined {
+    const value = response.headers.get(headerName);
+    if (!value) {
+      return undefined;
+    }
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? undefined : parsed;
   }
 
   /**

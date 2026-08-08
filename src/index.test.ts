@@ -1076,6 +1076,123 @@ describe("LiteSOC SDK", () => {
         expect(result.hasManagementApi).toBe(false);
         expect(result.hasBehavioralAi).toBe(false);
       });
+
+      it("should parse quota headers into plan info", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { success: true, data: [], pagination: { total: 0, limit: 1, offset: 0, has_more: false } },
+            {
+              plan: "pro",
+              retentionDays: 30,
+              headers: {
+                "X-LiteSOC-Quota-Limit": "5000",
+                "X-LiteSOC-Quota-Remaining": "4200",
+                "X-LiteSOC-Quota-Used": "800",
+              },
+            }
+          )
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getPlanInfo();
+
+        expect(result.quotaLimit).toBe(5000);
+        expect(result.quotaRemaining).toBe(4200);
+        expect(result.quotaUsed).toBe(800);
+      });
+
+      it("should leave quota fields undefined when quota headers are absent", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { success: true, data: [], pagination: { total: 0, limit: 1, offset: 0, has_more: false } },
+            { plan: "pro", retentionDays: 30 }
+          )
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getPlanInfo();
+
+        expect(result.quotaLimit).toBeUndefined();
+        expect(result.quotaRemaining).toBeUndefined();
+        expect(result.quotaUsed).toBeUndefined();
+      });
+
+      it("should leave quota fields undefined when quota headers are non-numeric", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse(
+            { success: true, data: [], pagination: { total: 0, limit: 1, offset: 0, has_more: false } },
+            {
+              plan: "pro",
+              retentionDays: 30,
+              headers: { "X-LiteSOC-Quota-Limit": "not-a-number" },
+            }
+          )
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getPlanInfo();
+
+        expect(result.quotaLimit).toBeUndefined();
+      });
+    });
+
+    describe("getHealth()", () => {
+      it("should call GET /health and return the parsed health object", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({
+            status: "ok",
+            service: "litesoc-api",
+            version: "1.0.0",
+            timestamp: "2026-08-08T00:00:00Z",
+            organization: { id: "org_123", name: "Acme Inc" },
+            authenticated: true,
+          })
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getHealth();
+
+        expect(mockFetch).toHaveBeenCalledWith(
+          "https://api.litesoc.io/health",
+          expect.objectContaining({ method: "GET" })
+        );
+        expect(result.status).toBe("ok");
+        expect(result.service).toBe("litesoc-api");
+        expect(result.version).toBe("1.0.0");
+        expect(result.timestamp).toBe("2026-08-08T00:00:00Z");
+        expect(result.organization).toEqual({ id: "org_123", name: "Acme Inc" });
+        expect(result.authenticated).toBe(true);
+      });
+
+      it("should return the unauthenticated shape when no organization is present", async () => {
+        mockFetch.mockResolvedValueOnce(
+          createMockResponse({
+            status: "ok",
+            service: "litesoc-api",
+            version: "1.0.0",
+            timestamp: "2026-08-08T00:00:00Z",
+          })
+        );
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const result = await client.getHealth();
+
+        expect(result.status).toBe("ok");
+        expect(result.organization).toBeUndefined();
+        expect(result.authenticated).toBeUndefined();
+      });
+
+      it("should map a 401 response to AuthenticationError", async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          headers: { get: () => null },
+          json: async () => ({ status: "error", error: "Unauthorized: Invalid API key" }),
+        });
+
+        const client = new LiteSOC({ apiKey: "invalid-key" });
+        await expect(client.getHealth()).rejects.toThrow(AuthenticationError);
+      });
     });
   });
 
