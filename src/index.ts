@@ -187,8 +187,6 @@ export interface TrackOptions {
   severity?: EventSeverity;
   /** Additional metadata for the event */
   metadata?: EventMetadata;
-  /** Custom timestamp (defaults to now) */
-  timestamp?: Date | string;
 }
 
 /**
@@ -227,7 +225,6 @@ interface QueuedEvent {
   actor: Actor | null;
   user_ip: string | null;
   metadata: EventMetadata;
-  timestamp: string;
 }
 
 /**
@@ -735,10 +732,8 @@ export class LiteSOC {
           _sdk_version: SDK_VERSION,
           // Severity stripped - server assigns this automatically
         },
-        timestamp:
-          options.timestamp instanceof Date
-            ? options.timestamp.toISOString()
-            : options.timestamp || new Date().toISOString(),
+        // Timestamp intentionally omitted - the server assigns the
+        // authoritative timestamp on ingest (contract: no client timestamp).
       };
 
       this.log("Tracking event:", eventName, event);

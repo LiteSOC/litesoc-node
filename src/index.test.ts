@@ -341,26 +341,7 @@ describe("LiteSOC SDK", () => {
       expect(body.actor).toEqual({ id: "user@example.com", email: "user@example.com" });
     });
 
-    it("should use Date timestamp", async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 202,
-        json: async () => ({ status: "queued", quota: { remaining: 4999, limit: 5000 } }),
-      });
-
-      const client = new LiteSOC({ apiKey: "test-api-key", batchSize: 1 });
-      const timestamp = new Date("2024-01-01T00:00:00Z");
-
-      await client.track("auth.login_success", {
-        actor: { id: "user-1" },
-        timestamp,
-      });
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.timestamp).toBe("2024-01-01T00:00:00.000Z");
-    });
-
-    it("should use string timestamp", async () => {
+    it("should NOT send a client timestamp (server assigns it)", async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         status: 202,
@@ -371,11 +352,17 @@ describe("LiteSOC SDK", () => {
 
       await client.track("auth.login_success", {
         actor: { id: "user-1" },
-        timestamp: "2024-01-01T00:00:00Z",
+        metadata: { foo: "bar" },
       });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.timestamp).toBe("2024-01-01T00:00:00Z");
+      // The ingestion contract has no `timestamp` field; the server assigns
+      // the authoritative timestamp on ingest.
+      expect(body).not.toHaveProperty("timestamp");
+      // Core fields are still present on the wire payload.
+      expect(body.event).toBe("auth.login_success");
+      expect(body.actor).toEqual({ id: "user-1" });
+      expect(body.metadata).toMatchObject({ foo: "bar" });
     });
 
     it("should strip severity from payload (server-side assignment)", async () => {
