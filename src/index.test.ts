@@ -80,7 +80,7 @@ describe("LiteSOC SDK", () => {
 
   describe("Constants", () => {
     it("should export SDK_VERSION", () => {
-      expect(SDK_VERSION).toBe("2.5.0");
+      expect(SDK_VERSION).toBe("2.6.0");
     });
 
     it("should export USER_AGENT", () => {
@@ -1591,7 +1591,7 @@ describe("LiteSOC SDK", () => {
         await expect(client.getAlerts()).rejects.toThrow(AuthenticationError);
       });
 
-      it("should throw PlanRestrictedError with custom message", async () => {
+      it("should throw PlanRestrictedError with custom message (nested shape)", async () => {
         mockFetch.mockResolvedValueOnce({
           ok: false,
           status: 403,
@@ -1604,6 +1604,38 @@ describe("LiteSOC SDK", () => {
         const error = await client.getAlerts().catch(e => e);
         expect(error).toBeInstanceOf(PlanRestrictedError);
         expect(error.message).toBe("Upgrade to Pro");
+      });
+
+      it("should throw PlanRestrictedError with custom message (flat shape)", async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: "Forbidden",
+          headers: new Map(),
+          json: async () => ({ error: "Upgrade required", code: "PLAN_RESTRICTED" }),
+        });
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const error = await client.getAlerts().catch(e => e);
+        expect(error).toBeInstanceOf(PlanRestrictedError);
+        expect(error.message).toBe("Upgrade required");
+      });
+
+      it("should throw LiteSOCError on 403 flat shape without PLAN_RESTRICTED code", async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: "Forbidden",
+          headers: new Map(),
+          json: async () => ({ error: "Access forbidden", code: "FORBIDDEN" }),
+        });
+
+        const client = new LiteSOC({ apiKey: "test-api-key" });
+        const error = await client.getAlerts().catch(e => e);
+        expect(error).toBeInstanceOf(LiteSOCError);
+        expect(error).not.toBeInstanceOf(PlanRestrictedError);
+        expect(error.message).toBe("Access forbidden");
+        expect(error.code).toBe("FORBIDDEN");
       });
 
       it("should throw PlanRestrictedError with default message when no message provided", async () => {

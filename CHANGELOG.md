@@ -5,6 +5,16 @@ All notable changes to the LiteSOC Node.js SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-08-08
+
+### Fixed
+- **Ingestion timestamps** - The SDK no longer sends a client `timestamp` on ingestion; the server assigns the authoritative timestamp on ingest.
+- **Error classification** - `handleApiError` now parses both the flat (`{ error: "<message>", code: "<CODE>" }`) and nested (`{ error: { code, message } }`) API error bodies, so `403 PLAN_RESTRICTED` detection works for the standardized flat backend shape while remaining backward compatible.
+
+### Added
+- **`getHealth()`** - New method that hits `GET /health` as a side-effect-free credential and connectivity probe.
+- **Quota response headers** - `quotaLimit`, `quotaRemaining`, and `quotaUsed` are now parsed from the `X-LiteSOC-Quota-*` response headers into the plan/response metadata.
+
 ## [2.5.1] - 2026-04-30
 
 ### Fixed

@@ -1,5 +1,5 @@
 /**
- * LiteSOC Node.js/TypeScript SDK v2.4.0
+ * LiteSOC Node.js/TypeScript SDK v2.6.0
  * Official SDK for security event tracking and threat detection
  *
  * Features:
@@ -16,7 +16,7 @@
 // ============================================
 
 /** SDK version */
-export const SDK_VERSION = "2.5.0";
+export const SDK_VERSION = "2.6.0";
 
 /** Default API base URL */
 export const DEFAULT_BASE_URL = "https://api.litesoc.io";
@@ -1619,7 +1619,14 @@ export class LiteSOC {
    * Handle API error responses and throw appropriate errors
    */
   private async handleApiError(response: Response): Promise<never> {
-    let errorBody: { error?: { code?: string; message?: string } } = {};
+    // The backend exposes two error-body shapes and this parser handles both:
+    //   - Flat (standardized):  { error: "<message>", code: "<CODE>", link, upgrade_link? }
+    //   - Nested (legacy):      { error: { code: "<CODE>", message: "<message>" } }
+    let errorBody: {
+      error?: string | { code?: string; message?: string };
+      code?: string;
+      message?: string;
+    } = {};
 
     try {
       errorBody = await response.json();
@@ -1627,8 +1634,13 @@ export class LiteSOC {
       // Response body is not JSON
     }
 
-    const errorCode = errorBody?.error?.code;
-    const errorMessage = errorBody?.error?.message;
+    // code: nested `error.code` when `error` is an object, else top-level `code`.
+    const errorCode =
+      (typeof errorBody.error === "object" ? errorBody.error?.code : undefined) ?? errorBody.code;
+    // message: flat `error` string, else nested `error.message`, else top-level `message`.
+    const errorMessage =
+      (typeof errorBody.error === "string" ? errorBody.error : errorBody.error?.message) ??
+      errorBody.message;
 
     switch (response.status) {
       case 401:
